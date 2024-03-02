@@ -1,6 +1,6 @@
 struct PolygonizationInfo {
     grid_size: vec3<f32>,
-    grid_origin: vec3<f32>, // bottom left corner
+    grid_location: vec3<f32>,
     sphere_center: vec3<f32>,
     sphere_radius: f32,
 }
@@ -138,7 +138,7 @@ fn find_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @built
 
     let invocations_number = num_workgroups * vec3<u32>(8, 8, 8);
     let vortex_size = polygonization_info.grid_size / vec3<f32>(invocations_number);
-    let vortex_origin = polygonization_info.grid_origin + (vec3<f32>(invocation_id) * vortex_size);
+    let vortex_origin = (polygonization_info.grid_location - (polygonization_info.grid_size / 2.0)) + (vec3<f32>(invocation_id) * vortex_size);
     var vertices = cube_vertices(vortex_size, vortex_origin);
     var sdfs = sdfs(vertices);
 

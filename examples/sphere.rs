@@ -20,32 +20,30 @@ pub fn setup(
     });
 
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(Cuboid::default())),
+        mesh: meshes.add(Plane3d::default().mesh().size(10.0, 10.0)),
         material: materials.add(StandardMaterial {
             base_color: Color::GREEN,
             ..default()
         }),
-        transform: Transform::from_xyz(5.0, 0.0, 0.0),
+        transform: Transform::from_xyz(0.0, 0.0, 0.0),
         ..default()
     });
     commands.spawn((
         Isosurface {
-            radius: 5.0,
+            radius: 3.0,
             center: Vec3::new(0.0, 0.0, 0.0),
             fake_mesh_asset: meshes.add(Cuboid::default()).into(),
         },
         Polygonization {
-            grid_size: Vec3::new(20.0, 20.0, 20.0),
-            grid_origin: Vec3::new(-10.0, -10.0, -10.0),
+            grid_size: Vec3::new(7.0, 7.0, 7.0),
+            grid_origin: Vec3::new(0.0, 0.0, 0.0),
         },
         materials.add(StandardMaterial {
             base_color: Color::ORANGE_RED,
-            // unlit: false,
-            // cull_mode: None,
             ..default()
         }),
         SpatialBundle {
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+            transform: Transform::from_xyz(0.0, 3.0, 0.0),
             visibility: Visibility::Visible,
             ..default()
         },
@@ -55,18 +53,9 @@ pub fn setup(
 fn main() {
     App::new()
         .add_plugins((
-            // scene::ScenePlugin,
-            // input::InputPlugin,
-            // player::PlayerPlugin,
-            // field::FieldPlugin,
-            // asset_loader::AssetLoaderPlugin,
             DefaultPlugins
                 .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        // uncomment for unthrottled FPS
-                        // present_mode: bevy::window::PresentMode::AutoNoVsync,
-                        ..default()
-                    }),
+                    primary_window: Some(Window { ..default() }),
                     ..default()
                 })
                 .set(PbrPlugin {

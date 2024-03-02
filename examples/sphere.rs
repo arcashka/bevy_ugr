@@ -32,7 +32,6 @@ pub fn setup(
         Isosurface {
             radius: 3.0,
             center: Vec3::new(0.0, 0.0, 0.0),
-            fake_mesh_asset: meshes.add(Cuboid::default()).into(),
         },
         Polygonization {
             grid_size: Vec3::new(7.0, 7.0, 7.0),

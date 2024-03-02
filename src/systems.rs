@@ -34,7 +34,7 @@ use crate::{
     compute::IsosurfaceComputePipeline,
     draw::{DrawIsosurfaceMaterial, IsosurfaceMaterialPipeline, IsosurfaceMaterialPipelineKey},
     types::{
-        DrawIndexedIndirect, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
+        DrawIndexedIndirect, FakeMesh, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
         IsosurfaceUniforms,
     },
     Isosurface, Polygonization,
@@ -476,6 +476,7 @@ pub fn extract_isosurfaces(
             Option<&PreviousGlobalTransform>,
             Has<NotShadowReceiver>,
             Has<TransmittedShadowReceiver>,
+            &FakeMesh,
         )>,
     >,
 ) {
@@ -489,6 +490,7 @@ pub fn extract_isosurfaces(
         previous_transform,
         not_shadow_receiver,
         transmitted_receiver,
+        fake_mesh,
     ) in isosurface_query.iter()
     {
         if !view_visibility.get() {
@@ -516,7 +518,7 @@ pub fn extract_isosurfaces(
         isosurface_instances.insert(
             entity,
             IsosurfaceInstance {
-                fake_mesh_asset: isosurface.fake_mesh_asset,
+                fake_mesh_asset: fake_mesh.0.clone().into(),
                 uniforms: IsosurfaceUniforms::new(
                     polygonization_settings.grid_size,
                     polygonization_settings.grid_origin,
@@ -553,5 +555,18 @@ pub fn fill_batch_data<I: CachedRenderPipelinePhaseItem>(
                 }
             }
         });
+    }
+}
+
+// ugly hack, required because there is some logic in queue material meshes which needs mesh id
+pub fn insert_fake_mesh(
+    mut commands: Commands,
+    mut isosurfaces: Query<Entity, (With<Isosurface>, Without<FakeMesh>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    for entity in isosurfaces.iter_mut() {
+        commands
+            .entity(entity)
+            .insert(FakeMesh(meshes.add(Cuboid::default())));
     }
 }

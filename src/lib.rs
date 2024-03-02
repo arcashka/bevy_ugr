@@ -27,8 +27,6 @@ use types::IsosurfaceInstances;
 pub struct Isosurface {
     pub radius: f32,
     pub center: Vec3,
-    // TODO: hide from user
-    pub fake_mesh_asset: AssetId<Mesh>,
 }
 
 #[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
@@ -42,6 +40,7 @@ pub struct IsosurfacePlugin;
 
 impl Plugin for IsosurfacePlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(FixedUpdate, systems::insert_fake_mesh);
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, systems::extract_isosurfaces)
             .add_systems(

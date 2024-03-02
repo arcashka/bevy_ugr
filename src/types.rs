@@ -23,6 +23,9 @@ pub struct IsosurfaceInstance {
 #[derive(Default, Resource, Deref, DerefMut)]
 pub struct IsosurfaceInstances(EntityHashMap<IsosurfaceInstance>);
 
+#[derive(Component)]
+pub struct FakeMesh(pub Handle<Mesh>);
+
 #[derive(ShaderType, Copy, Clone, Debug, PartialEq, Reflect, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct IsosurfaceUniforms {

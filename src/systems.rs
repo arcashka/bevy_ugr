@@ -204,15 +204,23 @@ pub fn queue_material_isosurfaces<M: Material>(
             mesh_key |= alpha_mode_pipeline_key(material.properties.alpha_mode);
 
             let layout = MeshVertexBufferLayout::new(InnerMeshVertexBufferLayout::new(
-                [Mesh::ATTRIBUTE_POSITION.id].into(),
+                [Mesh::ATTRIBUTE_POSITION.id, Mesh::ATTRIBUTE_NORMAL.id].into(),
                 VertexBufferLayout {
-                    array_stride: Mesh::ATTRIBUTE_POSITION.format.size(),
+                    array_stride: Mesh::ATTRIBUTE_POSITION.format.size()
+                        + Mesh::ATTRIBUTE_NORMAL.format.size(),
                     step_mode: VertexStepMode::Vertex,
-                    attributes: [VertexAttribute {
-                        shader_location: 0,
-                        offset: 0,
-                        format: Mesh::ATTRIBUTE_POSITION.format,
-                    }]
+                    attributes: [
+                        VertexAttribute {
+                            shader_location: 0,
+                            offset: 0,
+                            format: Mesh::ATTRIBUTE_POSITION.format,
+                        },
+                        VertexAttribute {
+                            shader_location: 1,
+                            offset: 12,
+                            format: Mesh::ATTRIBUTE_NORMAL.format,
+                        },
+                    ]
                     .into(),
                 },
             ));

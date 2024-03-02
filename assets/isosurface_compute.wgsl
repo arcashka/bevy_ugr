@@ -36,11 +36,14 @@ fn flat_invocation_id(invocation_id: vec3<u32>, invocations_number: vec3<u32>) -
 }
 
 // because vec3f has 16 bytes alighnment
-fn set_vertex(index: u32, value: vec3<f32>) {
-    let offset = index * 3;
+fn set_vertex(index: u32, value: vec3<f32>, normal: vec3<f32>) {
+    let offset = index * 6;
     vbo[offset] = value.x;
     vbo[offset + 1] = value.y;
     vbo[offset + 2] = value.z;
+    vbo[offset + 3] = normal.x;
+    vbo[offset + 4] = normal.y;
+    vbo[offset + 5] = normal.z;
 }
 
 fn cube_vertices(vortex_size: vec3<f32>, vortex_origin: vec3<f32>) -> array<vec3<f32>, 8>{
@@ -71,6 +74,13 @@ fn sdfs(vertices: array<vec3<f32>, 8>) -> array<f32, 8> {
         sdf(vertices[6]),
         sdf(vertices[7]),
     );
+}
+
+fn normal(sdfs: array<f32, 8>) -> vec3<f32> {
+    let dx = (sdfs[1] - sdfs[0]) + (sdfs[3] - sdfs[2]) + (sdfs[5] - sdfs[4]) + (sdfs[7] - sdfs[6]);
+    let dy = (sdfs[2] - sdfs[0]) + (sdfs[3] - sdfs[1]) + (sdfs[6] - sdfs[4]) + (sdfs[7] - sdfs[5]);
+    let dz = (sdfs[4] - sdfs[0]) + (sdfs[5] - sdfs[1]) + (sdfs[6] - sdfs[2]) + (sdfs[7] - sdfs[3]);
+    return normalize(vec3<f32>(dx, dy, dz));
 }
 
 fn edge_bitmask(index: u32) -> u32 {
@@ -133,8 +143,9 @@ fn find_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @built
     var vbo_index: u32 = 0;
     if intersections_count > 0 {
         let point = sum / f32(intersections_count);
+        let normal = normal(sdfs);
         vbo_index = atomicAdd(&atomics[0], 1u);
-        set_vertex(vbo_index, point);
+        set_vertex(vbo_index, point, normal);
     }
     let flat_index = flat_invocation_id(invocation_id, invocations_number);
     cells[flat_index] = CellInfo(vbo_index, intersections_bitmask);

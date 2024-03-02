@@ -13,9 +13,10 @@ pub struct IsosurfaceInstance {
     pub index_buffer: Option<Buffer>,
     pub cell_buffer: Option<Buffer>,
     pub atomics_buffer: Option<Buffer>,
+    pub indices_buffer: Option<Buffer>,
     pub indirect_buffer: Option<Buffer>,
     pub compute_bind_group: Option<BindGroup>,
-    pub vertex_count: usize,
+    pub indices: Option<IsosurfaceIndices>,
     pub transforms: MeshTransforms,
 }
 
@@ -48,6 +49,19 @@ impl IsosurfaceUniforms {
             sphere_origin,
             sphere_radius,
         }
+    }
+}
+
+#[derive(ShaderType, Copy, Clone, Debug, PartialEq, Reflect, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct IsosurfaceIndices {
+    pub start: u32,
+    pub count: u32,
+}
+
+impl IsosurfaceIndices {
+    pub fn new(start: u32, count: u32) -> Self {
+        Self { start, count }
     }
 }
 

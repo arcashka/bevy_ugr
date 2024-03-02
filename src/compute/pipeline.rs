@@ -11,7 +11,7 @@ use bevy::{
 
 use std::{borrow::Cow, num::NonZeroU64};
 
-use crate::types::{DrawIndexedIndirect, IsosurfaceUniforms};
+use crate::types::{DrawIndexedIndirect, IsosurfaceIndices, IsosurfaceUniforms};
 
 #[derive(Resource)]
 pub struct IsosurfaceComputePipeline {
@@ -40,6 +40,8 @@ impl FromWorld for IsosurfaceComputePipeline {
                     binding_types::storage_buffer_sized(false, NonZeroU64::new(1024)),
                     // Atomics
                     binding_types::storage_buffer_sized(false, None),
+                    // indices
+                    binding_types::storage_buffer::<IsosurfaceIndices>(false),
                     // indirect
                     binding_types::storage_buffer::<DrawIndexedIndirect>(false),
                 ),

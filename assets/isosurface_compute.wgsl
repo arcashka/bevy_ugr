@@ -13,6 +13,11 @@ struct DrawIndexedIndirect {
     first_instance: u32,
 }
 
+struct Indices {
+    start: u32,
+    count: u32,
+}
+
 struct CellInfo {
     vbo_index: u32,
     intersections_bitmask: u32,
@@ -23,7 +28,8 @@ struct CellInfo {
 @group(0) @binding(2) var<storage, read_write> ibo: array<u32>;
 @group(0) @binding(3) var<storage, read_write> cells: array<CellInfo>;
 @group(0) @binding(4) var<storage, read_write> atomics: array<atomic<u32>, 2>;
-@group(0) @binding(5) var<storage, read_write> indirect: DrawIndexedIndirect;
+@group(0) @binding(5) var<storage, read_write> indices: Indices;
+@group(0) @binding(6) var<storage, read_write> indirect: DrawIndexedIndirect;
 
 fn flat_invocation_id(invocation_id: vec3<u32>, invocations_number: vec3<u32>) -> u32 {
     return invocation_id.x + invocation_id.y * invocations_number.x + invocation_id.z * invocations_number.x * invocations_number.y;
@@ -174,9 +180,9 @@ fn connect_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @bu
 @compute @workgroup_size(1, 1, 1)
 fn prepare_indirect_buffer() {
     indirect.index_count = atomics[1] * 6u;
-    indirect.instance_count = 1u;
+    indirect.instance_count = indices.count;
     indirect.first_index = 0u;
     indirect.vertex_offset = 0i;
-    indirect.first_instance = 0u;
+    indirect.first_instance = indices.start;
 }
 

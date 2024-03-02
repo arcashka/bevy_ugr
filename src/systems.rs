@@ -18,7 +18,7 @@ use bevy::{
     render::{
         camera::TemporalJitter,
         mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
-        render_phase::{DrawFunctions, RenderPhase},
+        render_phase::{CachedRenderPipelinePhaseItem, DrawFunctions, RenderPhase},
         render_resource::{
             BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, PipelineCache,
             PrimitiveTopology, SpecializedMeshPipelines, VertexAttribute, VertexBufferLayout,
@@ -33,7 +33,10 @@ use bevy::{
 use crate::{
     compute::IsosurfaceComputePipeline,
     draw::{DrawIsosurfaceMaterial, IsosurfaceMaterialPipeline, IsosurfaceMaterialPipelineKey},
-    types::{DrawIndexedIndirect, IsosurfaceInstance, IsosurfaceInstances, IsosurfaceUniforms},
+    types::{
+        DrawIndexedIndirect, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
+        IsosurfaceUniforms,
+    },
     Isosurface, Polygonization,
 };
 
@@ -335,7 +338,7 @@ pub fn prepare_buffers(
         }
 
         // uniform
-        // TODO: write new values instead of recreating this 2 buffers
+        // TODO: write new values instead of recreating this 3... buffers
         let uniform_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("isosurface uniform buffer"),
             contents: bytemuck::bytes_of(&isosurface.uniforms),
@@ -350,6 +353,18 @@ pub fn prepare_buffers(
             usage: BufferUsages::STORAGE,
         });
         isosurface.atomics_buffer = Some(atomics_buffer);
+
+        let Some(indices) = isosurface.indices.as_ref() else {
+            error!("isosurface indices are not set");
+            return;
+        };
+        // indices
+        let indices_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
+            label: Some("isosurface indices buffer"),
+            contents: bytemuck::bytes_of(indices),
+            usage: BufferUsages::STORAGE,
+        });
+        isosurface.indices_buffer = Some(indices_buffer);
 
         // indirect
         if isosurface.indirect_buffer.is_none() {
@@ -393,6 +408,10 @@ pub fn prepare_bind_groups(
             error!("isosurface atomics buffer is None");
             return;
         };
+        let Some(indices_buffer) = isosurface.indices_buffer.as_ref() else {
+            error!("isosurface indices buffer is None");
+            return;
+        };
         let Some(indirect_buffer) = isosurface.indirect_buffer.as_ref() else {
             error!("isosurface indirect buffer is None");
             return;
@@ -424,6 +443,10 @@ pub fn prepare_bind_groups(
                 },
                 BindGroupEntry {
                     binding: 5,
+                    resource: indices_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 6,
                     resource: indirect_buffer.as_entire_binding(),
                 },
             ],
@@ -497,11 +520,30 @@ pub fn extract_isosurfaces(
                 cell_buffer: None,
                 uniform_buffer: None,
                 atomics_buffer: None,
+                indices_buffer: None,
                 indirect_buffer: None,
                 compute_bind_group: None,
-                vertex_count: 0,
+                indices: None,
                 transforms,
             },
         );
+    }
+}
+
+pub fn fill_batch_data<I: CachedRenderPipelinePhaseItem>(
+    views: Query<&RenderPhase<I>>,
+    mut isosurface_instances: ResMut<IsosurfaceInstances>,
+) {
+    for (entity, isosurface) in isosurface_instances.iter_mut() {
+        views.iter().for_each(|view| {
+            for phase in &view.items {
+                if phase.entity() == *entity {
+                    let range = phase.batch_range().clone();
+                    let indices = IsosurfaceIndices::new(range.start, range.end - range.start);
+                    isosurface.indices = Some(indices);
+                    return;
+                }
+            }
+        });
     }
 }

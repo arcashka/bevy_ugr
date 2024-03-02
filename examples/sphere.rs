@@ -2,7 +2,7 @@ use bevy::{pbr::PbrPlugin, prelude::*};
 
 use bevy_flycam::PlayerPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use bevy_isosurface::{Isosurface, IsosurfacePlugin, Polygonization};
+use bevy_isosurface::{Isosurface, IsosurfacePlugin};
 
 pub fn setup(
     mut commands: Commands,
@@ -32,8 +32,6 @@ pub fn setup(
         Isosurface {
             radius: 3.0,
             center: Vec3::new(0.0, 0.0, 0.0),
-        },
-        Polygonization {
             grid_size: Vec3::new(7.0, 7.0, 7.0),
             grid_origin: Vec3::new(0.0, 0.0, 0.0),
         },

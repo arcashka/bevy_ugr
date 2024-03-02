@@ -37,7 +37,7 @@ use crate::{
         DrawIndexedIndirect, FakeMesh, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
         IsosurfaceUniforms,
     },
-    Isosurface, Polygonization,
+    Isosurface,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -470,7 +470,6 @@ pub fn extract_isosurfaces(
         Query<(
             Entity,
             &Isosurface,
-            &Polygonization,
             &ViewVisibility,
             &GlobalTransform,
             Option<&PreviousGlobalTransform>,
@@ -484,7 +483,6 @@ pub fn extract_isosurfaces(
     for (
         entity,
         isosurface,
-        polygonization_settings,
         view_visibility,
         transform,
         previous_transform,
@@ -520,8 +518,8 @@ pub fn extract_isosurfaces(
             IsosurfaceInstance {
                 fake_mesh_asset: fake_mesh.0.clone().into(),
                 uniforms: IsosurfaceUniforms::new(
-                    polygonization_settings.grid_size,
-                    polygonization_settings.grid_origin,
+                    isosurface.grid_size,
+                    isosurface.grid_origin,
                     isosurface.center,
                     isosurface.radius,
                 ),

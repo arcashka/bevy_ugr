@@ -27,10 +27,6 @@ use types::IsosurfaceInstances;
 pub struct Isosurface {
     pub radius: f32,
     pub center: Vec3,
-}
-
-#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
-pub struct Polygonization {
     pub grid_size: Vec3,
     pub grid_origin: Vec3,
 }

@@ -40,8 +40,8 @@ pub fn setup(
         },
         materials.add(StandardMaterial {
             base_color: Color::ORANGE_RED,
-            unlit: false,
-            cull_mode: None,
+            // unlit: false,
+            // cull_mode: None,
             ..default()
         }),
         SpatialBundle {

@@ -45,11 +45,12 @@ impl render_graph::Node for IsosurfaceComputeNode {
                 error!("missing isosurface compute bind group");
                 return Ok(());
             };
+            let density = isosurface.grid_density;
             pass.set_bind_group(0, bind_group, &[]);
             pass.set_pipeline(find_vertices_pipeline);
-            pass.dispatch_workgroups(4, 4, 4);
+            pass.dispatch_workgroups(density.x, density.y, density.z);
             pass.set_pipeline(connect_vertices_pipeline);
-            pass.dispatch_workgroups(4, 4, 4);
+            pass.dispatch_workgroups(density.x, density.y, density.z);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
         }

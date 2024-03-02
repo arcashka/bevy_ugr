@@ -7,6 +7,7 @@ use bevy::{
 
 pub struct IsosurfaceInstance {
     pub fake_mesh_asset: AssetId<Mesh>,
+    pub grid_density: UVec3,
     pub uniforms: IsosurfaceUniforms,
     pub uniform_buffer: Option<Buffer>,
     pub vertex_buffer: Option<Buffer>,

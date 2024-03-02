@@ -34,6 +34,7 @@ pub fn setup(
             center: Vec3::new(0.0, 0.0, 0.0),
             grid_size: Vec3::new(7.0, 7.0, 7.0),
             grid_origin: Vec3::new(0.0, 0.0, 0.0),
+            grid_density: UVec3::new(1, 1, 1),
         },
         materials.add(StandardMaterial {
             base_color: Color::ORANGE_RED,

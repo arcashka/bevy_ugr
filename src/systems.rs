@@ -517,6 +517,7 @@ pub fn extract_isosurfaces(
             entity,
             IsosurfaceInstance {
                 fake_mesh_asset: fake_mesh.0.clone().into(),
+                grid_density: isosurface.grid_density,
                 uniforms: IsosurfaceUniforms::new(
                     isosurface.grid_size,
                     isosurface.grid_origin,

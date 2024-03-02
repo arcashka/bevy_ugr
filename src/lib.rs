@@ -29,6 +29,13 @@ pub struct Isosurface {
     pub center: Vec3,
     pub grid_size: Vec3,
     pub grid_origin: Vec3,
+    // TODO: there is a better way probably...
+    //
+    // amount of cells in grid is calculated like this
+    // x = 8 * grid_density.x
+    // y = 8 * grid_density.y
+    // z = 8 * grid_density.z
+    pub grid_density: UVec3,
 }
 
 #[derive(Default)]

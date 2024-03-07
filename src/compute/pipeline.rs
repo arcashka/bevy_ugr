@@ -17,6 +17,7 @@ use crate::types::{DrawIndexedIndirect, IsosurfaceIndices, IsosurfaceUniforms};
 pub struct IsosurfaceComputePipeline {
     pub compute_bind_group_layout: BindGroupLayout,
     pub find_vertices_pipeline: CachedComputePipelineId,
+    pub sort_pipeline: CachedComputePipelineId,
     pub connect_vertices_pipeline: CachedComputePipelineId,
     pub prepare_indirect_buffer_pipeline: CachedComputePipelineId,
 }
@@ -62,6 +63,15 @@ impl FromWorld for IsosurfaceComputePipeline {
                 entry_point: Cow::from("find_vertices"),
             });
 
+        let sort_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: Some("isosurface sort pipeline".into()),
+            layout: vec![compute_bind_group_layout.clone()],
+            push_constant_ranges: Vec::new(),
+            shader: shader.clone(),
+            shader_defs: vec![],
+            entry_point: Cow::from("sort"),
+        });
+
         let connect_vertices_pipeline =
             pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
                 label: Some("isosurface connect_vertices pipeline".into()),
@@ -85,6 +95,7 @@ impl FromWorld for IsosurfaceComputePipeline {
         IsosurfaceComputePipeline {
             compute_bind_group_layout,
             find_vertices_pipeline,
+            sort_pipeline,
             connect_vertices_pipeline,
             prepare_indirect_buffer_pipeline,
         }

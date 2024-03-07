@@ -26,16 +26,21 @@ struct Indices {
 //     |/     |/
 //     0 ---- 1
 //
-struct CellInfo {
-    vbo_index: u32,
+struct VertexInfo {
+    flat_cell_index: u32,
     intersections_bitmask: u32,
+}
+
+struct Atomics {
+    vertex_count: atomic<u32>,
+    quad_count: atomic<u32>,
 }
 
 @group(0) @binding(0) var<uniform> polygonization_info: PolygonizationInfo;
 @group(0) @binding(1) var<storage, read_write> vbo: array<f32>;
 @group(0) @binding(2) var<storage, read_write> ibo: array<u32>;
-@group(0) @binding(3) var<storage, read_write> cells: array<CellInfo>;
-@group(0) @binding(4) var<storage, read_write> atomics: array<atomic<u32>, 2>;
+@group(0) @binding(3) var<storage, read_write> vertices: array<VertexInfo>;
+@group(0) @binding(4) var<storage, read_write> atomics: Atomics;
 @group(0) @binding(5) var<storage, read_write> indices: Indices;
 @group(0) @binding(6) var<storage, read_write> indirect: DrawIndexedIndirect;
 
@@ -44,7 +49,7 @@ fn flat_invocation_id(invocation_id: vec3<u32>, invocations_number: vec3<u32>) -
 }
 
 // because vec3f has 16 bytes alighnment
-fn set_vertex(index: u32, value: vec3<f32>, normal: vec3<f32>) {
+fn set_vbo_data(index: u32, value: vec3<f32>, normal: vec3<f32>) {
     let offset = index * 6;
     vbo[offset] = value.x;
     vbo[offset + 1] = value.y;
@@ -52,6 +57,14 @@ fn set_vertex(index: u32, value: vec3<f32>, normal: vec3<f32>) {
     vbo[offset + 3] = normal.x;
     vbo[offset + 4] = normal.y;
     vbo[offset + 5] = normal.z;
+}
+
+fn get_vbo_data(index: u32) -> array<vec3<f32>, 2>{
+    let offset = index * 6;
+    return array<vec3<f32>, 2>(
+        vec3<f32>(vbo[offset], vbo[offset + 1], vbo[offset + 2]),
+        vec3<f32>(vbo[offset + 3], vbo[offset + 4], vbo[offset + 5]),
+    );
 }
 
 fn cube_vertices(vortex_size: vec3<f32>, vortex_origin: vec3<f32>) -> array<vec3<f32>, 8>{
@@ -139,8 +152,8 @@ fn find_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @built
     let invocations_number = num_workgroups * vec3<u32>(8, 8, 8);
     let vortex_size = polygonization_info.grid_size / vec3<f32>(invocations_number);
     let vortex_origin = (polygonization_info.grid_location - (polygonization_info.grid_size / 2.0)) + (vec3<f32>(invocation_id) * vortex_size);
-    var vertices = cube_vertices(vortex_size, vortex_origin);
-    var sdfs = sdfs(vertices);
+    var local_vertices = cube_vertices(vortex_size, vortex_origin);
+    var sdfs = sdfs(local_vertices);
 
     var sum = vec3<f32>(0.0, 0.0, 0.0);
     var intersections_count: u32 = 0;
@@ -152,7 +165,7 @@ fn find_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @built
         let sdf0 = sdfs[p0_index];
         let sdf1 = sdfs[p1_index];
         if ((sdf0 > 0.0) != (sdf1 > 0.0)) {
-            sum += get_intersection(vertices[p0_index], vertices[p1_index], sdf0, sdf1);
+            sum += get_intersection(local_vertices[p0_index], local_vertices[p1_index], sdf0, sdf1);
             intersections_count += 1u;
             if (i < 3) {
                 // here we care only about first 3 edges, so 0 - 1, 0 - 2, 0 - 4, see cube drawing above
@@ -165,60 +178,126 @@ fn find_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @built
             }
         }
     }
-    var vbo_index: u32 = 0;
+    var index: u32 = 0;
     if intersections_count > 0 {
         let point = sum / f32(intersections_count);
         let normal = normal(sdfs);
-        vbo_index = atomicAdd(&atomics[0], 1u);
-        set_vertex(vbo_index, point, normal);
+        index = atomicAdd(&atomics.vertex_count, 1u);
+        set_vbo_data(index, point, normal);
+        let flat_index = flat_invocation_id(invocation_id, invocations_number);
+        vertices[index] = VertexInfo(flat_index, intersections_bitmask);
     }
-    let flat_index = flat_invocation_id(invocation_id, invocations_number);
-    cells[flat_index] = CellInfo(vbo_index, intersections_bitmask);
+}
+
+fn bitonic_sort_step(index: u32, distance: u32, direction: bool) {
+    let partner: u32 = index ^ distance;
+    if (partner > index && index < atomicLoad(&atomics.vertex_count) && partner < atomicLoad(&atomics.vertex_count)) {
+        // Only proceed if both current and partner indices are within the actual data range
+        let current_vertice = vertices[index];
+        let partner_vertice = vertices[partner];
+        if (direction == (current_vertice.flat_cell_index > partner_vertice.flat_cell_index)) {
+            // Perform the swap if the direction and comparison criteria are met
+            let current_vbo = get_vbo_data(index);
+            let partner_vbo = get_vbo_data(partner);
+            set_vbo_data(index, partner_vbo[0], partner_vbo[1]);
+            vertices[index] = partner_vertice;
+            set_vbo_data(partner, current_vbo[0], current_vbo[1]);
+            vertices[partner] = current_vertice;
+        }
+    }
+}
+
+@compute @workgroup_size(4, 4, 4)
+fn sort(@builtin(global_invocation_id) invocation_id : vec3<u32>, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
+    let invocations_number = num_workgroups * vec3<u32>(4, 4, 4);
+    let id = flat_invocation_id(invocation_id, invocations_number);
+    let vertex_count = atomicLoad(&atomics.vertex_count); // Ensure we have the latest count
+    let should_process = id < vertex_count;
+
+    for (var width: u32 = 2u; width < vertex_count * 2u; width *= 2u) {
+        for (var distance: u32 = width >> 1; distance > 0u; distance >>= 1u) {
+            if (should_process) {
+                let direction = (id & width) == 0;
+                bitonic_sort_step(id, distance, direction);
+            }
+            workgroupBarrier();
+        }
+    }
+}
+
+fn binary_search_cell_index(target_flat_cell_index: u32) -> i32 {
+    var left: i32 = 0;
+    var right: i32 = i32(atomics.vertex_count - 1);
+
+    while (left <= right) {
+        let mid = left + (right - left) / 2;
+        let mid_value = vertices[mid].flat_cell_index;
+
+        if (mid_value == target_flat_cell_index) {
+            return mid;
+        } else if (mid_value < target_flat_cell_index) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    return -1;
 }
 
 @compute @workgroup_size(8, 8, 8)
 fn connect_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
     let invocations_number = num_workgroups * vec3<u32>(8, 8, 8);
-    let cells_index_point0 = flat_invocation_id(invocation_id, invocations_number);
-    let cell1 = cells[cells_index_point0];
+    let id = flat_invocation_id(invocation_id, invocations_number);
+    let id0 = binary_search_cell_index(id);
+    if (id0 == -1) {
+        return;
+    }
+    let cell1 = vertices[id0];
     if ((cell1.intersections_bitmask & edge_bitmask(0u)) != 0u) {
         if (invocation_id.y != 0 && invocation_id.z != 0) {
-            let vbo_index_point0 = cell1.vbo_index;
-            let vbo_index_point1 = cells[flat_invocation_id(invocation_id - vec3<u32>(0, 1, 0), invocations_number)].vbo_index;
-            let vbo_index_point2 = cells[flat_invocation_id(invocation_id - vec3<u32>(0, 0, 1), invocations_number)].vbo_index;
-            let vbo_index_point3 = cells[flat_invocation_id(invocation_id - vec3<u32>(0, 1, 1), invocations_number)].vbo_index;
-            let quad_index = atomicAdd(&atomics[1], 1u);
+            let id1 = flat_invocation_id(invocation_id - vec3<u32>(0, 1, 0), invocations_number);
+            let vbo_index_point1 = u32(binary_search_cell_index(id1));
+            let id2 = flat_invocation_id(invocation_id - vec3<u32>(0, 0, 1), invocations_number);
+            let vbo_index_point2 = u32(binary_search_cell_index(id2));
+            let id3 = flat_invocation_id(invocation_id - vec3<u32>(0, 1, 1), invocations_number);
+            let vbo_index_point3 = u32(binary_search_cell_index(id3));
+            let quad_index = atomicAdd(&atomics.quad_count, 1u);
             let order = (cell1.intersections_bitmask & edge_bitmask(3u)) == 0u;
-            write_quad_to_ibo(quad_index, vbo_index_point0, vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
+            write_quad_to_ibo(quad_index, u32(id0), vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
         }
     }
     if ((cell1.intersections_bitmask & edge_bitmask(1u)) != 0u) {
         if (invocation_id.x != 0 && invocation_id.z != 0) {
-            let vbo_index_point0 = cell1.vbo_index;
-            let vbo_index_point1 = cells[flat_invocation_id(invocation_id - vec3<u32>(1, 0, 0), invocations_number)].vbo_index;
-            let vbo_index_point2 = cells[flat_invocation_id(invocation_id - vec3<u32>(0, 0, 1), invocations_number)].vbo_index;
-            let vbo_index_point3 = cells[flat_invocation_id(invocation_id - vec3<u32>(1, 0, 1), invocations_number)].vbo_index;
-            let quad_index = atomicAdd(&atomics[1], 1u);
+            let id1 = flat_invocation_id(invocation_id - vec3<u32>(1, 0, 0), invocations_number);
+            let vbo_index_point1 = u32(binary_search_cell_index(id1));
+            let id2 = flat_invocation_id(invocation_id - vec3<u32>(0, 0, 1), invocations_number);
+            let vbo_index_point2 = u32(binary_search_cell_index(id2));
+            let id3 = flat_invocation_id(invocation_id - vec3<u32>(1, 0, 1), invocations_number);
+            let vbo_index_point3 = u32(binary_search_cell_index(id3));
+            let quad_index = atomicAdd(&atomics.quad_count, 1u);
             let order = (cell1.intersections_bitmask & edge_bitmask(4u)) != 0u;
-            write_quad_to_ibo(quad_index, vbo_index_point0, vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
+            write_quad_to_ibo(quad_index, u32(id0), vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
         }
     }
     if ((cell1.intersections_bitmask & edge_bitmask(2u)) != 0u) {
         if (invocation_id.x != 0 && invocation_id.y != 0) {
-            let vbo_index_point0 = cell1.vbo_index;
-            let vbo_index_point1 = cells[flat_invocation_id(invocation_id - vec3<u32>(1, 0, 0), invocations_number)].vbo_index;
-            let vbo_index_point2 = cells[flat_invocation_id(invocation_id - vec3<u32>(0, 1, 0), invocations_number)].vbo_index;
-            let vbo_index_point3 = cells[flat_invocation_id(invocation_id - vec3<u32>(1, 1, 0), invocations_number)].vbo_index;
-            let quad_index = atomicAdd(&atomics[1], 1u);
+            let id1 = flat_invocation_id(invocation_id - vec3<u32>(1, 0, 0), invocations_number);
+            let vbo_index_point1 = u32(binary_search_cell_index(id1));
+            let id2 = flat_invocation_id(invocation_id - vec3<u32>(0, 1, 0), invocations_number);
+            let vbo_index_point2 = u32(binary_search_cell_index(id2));
+            let id3 = flat_invocation_id(invocation_id - vec3<u32>(1, 1, 0), invocations_number);
+            let vbo_index_point3 = u32(binary_search_cell_index(id3));
+            let quad_index = atomicAdd(&atomics.quad_count, 1u);
             let order = (cell1.intersections_bitmask & edge_bitmask(5u)) == 0u;
-            write_quad_to_ibo(quad_index, vbo_index_point0, vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
+            write_quad_to_ibo(quad_index, u32(id0), vbo_index_point1, vbo_index_point2, vbo_index_point3, order);
         }
     }
 }
 
 @compute @workgroup_size(1, 1, 1)
 fn prepare_indirect_buffer() {
-    indirect.index_count = atomics[1] * 6u;
+    indirect.index_count = atomics.quad_count * 6u;
     indirect.instance_count = indices.count;
     indirect.first_index = 0u;
     indirect.vertex_offset = 0i;

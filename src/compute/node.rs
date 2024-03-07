@@ -30,6 +30,9 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let Some(find_vertices_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline) else {
             return Ok(());
         };
+        let Some(sort_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.sort_pipeline) else {
+            return Ok(());
+        };
         let Some(connect_vertices_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline) else {
             return Ok(());
         };
@@ -49,6 +52,8 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pass.set_bind_group(0, bind_group, &[]);
             pass.set_pipeline(find_vertices_pipeline);
             pass.dispatch_workgroups(density.x, density.y, density.z);
+            pass.set_pipeline(sort_pipeline);
+            pass.dispatch_workgroups(density.x * 2, density.y * 2, density.z * 2);
             pass.set_pipeline(connect_vertices_pipeline);
             pass.dispatch_workgroups(density.x, density.y, density.z);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);

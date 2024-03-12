@@ -9,20 +9,20 @@ use bevy::{
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
         screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
-        MaterialPipelineKey, MeshFlags, MeshPipelineKey, MeshTransforms, NotShadowReceiver,
-        OpaqueRendererMethod, PreviousGlobalTransform, RenderMaterialInstances, RenderMaterials,
-        RenderViewLightProbes, ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod,
-        TransmittedShadowReceiver,
+        MaterialPipeline, MaterialPipelineKey, MeshFlags, MeshPipelineKey, MeshTransforms,
+        MeshUniform, NotShadowReceiver, OpaqueRendererMethod, PreviousGlobalTransform,
+        RenderMaterialInstances, RenderMaterials, RenderViewLightProbes,
+        ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod, TransmittedShadowReceiver,
     },
     prelude::*,
     render::{
         camera::TemporalJitter,
         mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
-        render_phase::{CachedRenderPipelinePhaseItem, DrawFunctions, RenderPhase},
+        render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
-            BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, PipelineCache,
-            PrimitiveTopology, SpecializedMeshPipelines, VertexAttribute, VertexBufferLayout,
-            VertexStepMode,
+            BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, GpuArrayBuffer,
+            PipelineCache, PrimitiveTopology, SpecializedMeshPipelines, VertexAttribute,
+            VertexBufferLayout, VertexStepMode,
         },
         renderer::RenderDevice,
         view::{ExtractedView, VisibleEntities},
@@ -31,8 +31,8 @@ use bevy::{
 };
 
 use crate::{
-    compute::IsosurfaceComputePipeline,
-    draw::{DrawIsosurfaceMaterial, IsosurfaceMaterialPipeline, IsosurfaceMaterialPipelineKey},
+    compute::IsosurfaceComputePipelines,
+    draw::DrawIsosurfaceMaterial,
     types::{
         DrawIndexedIndirect, FakeMesh, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
         IsosurfaceUniforms,
@@ -46,8 +46,8 @@ pub fn queue_material_isosurfaces<M: Material>(
     alpha_mask_draw_functions: Res<DrawFunctions<AlphaMask3d>>,
     transmissive_draw_functions: Res<DrawFunctions<Transmissive3d>>,
     transparent_draw_functions: Res<DrawFunctions<Transparent3d>>,
-    material_pipeline: Res<IsosurfaceMaterialPipeline<M>>,
-    mut pipelines: ResMut<SpecializedMeshPipelines<IsosurfaceMaterialPipeline<M>>>,
+    material_pipeline: Res<MaterialPipeline<M>>,
+    mut pipelines: ResMut<SpecializedMeshPipelines<MaterialPipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
     msaa: Res<Msaa>,
     render_materials: Res<RenderMaterials<M>>,
@@ -227,11 +227,9 @@ pub fn queue_material_isosurfaces<M: Material>(
             let pipeline_id = pipelines.specialize(
                 &pipeline_cache,
                 &material_pipeline,
-                IsosurfaceMaterialPipelineKey {
-                    material_pipeline_key: MaterialPipelineKey {
-                        mesh_key,
-                        bind_group_data: material.key.clone(),
-                    },
+                MaterialPipelineKey {
+                    mesh_key,
+                    bind_group_data: material.key.clone(),
                 },
                 &layout,
             );
@@ -389,7 +387,7 @@ pub fn prepare_buffers(
 
 pub fn prepare_bind_groups(
     render_device: Res<RenderDevice>,
-    isosurface_compute_pipeline: Res<IsosurfaceComputePipeline>,
+    isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
 ) {
     for (_, isosurface) in isosurface_instances.iter_mut() {
@@ -539,24 +537,6 @@ pub fn extract_isosurfaces(
     }
 }
 
-pub fn fill_batch_data<I: CachedRenderPipelinePhaseItem>(
-    views: Query<&RenderPhase<I>>,
-    mut isosurface_instances: ResMut<IsosurfaceInstances>,
-) {
-    for (entity, isosurface) in isosurface_instances.iter_mut() {
-        views.iter().for_each(|view| {
-            for phase in &view.items {
-                if phase.entity() == *entity {
-                    let range = phase.batch_range().clone();
-                    let indices = IsosurfaceIndices::new(range.start, range.end - range.start);
-                    isosurface.indices = Some(indices);
-                    return;
-                }
-            }
-        });
-    }
-}
-
 // ugly hack, required because there is some logic in queue material meshes which needs mesh id
 pub fn insert_fake_mesh(
     mut commands: Commands,
@@ -567,5 +547,21 @@ pub fn insert_fake_mesh(
         commands
             .entity(entity)
             .insert(FakeMesh(meshes.add(Cuboid::default())));
+    }
+}
+
+pub fn prepare_mesh_uniforms(
+    mut gpu_array_buffer: ResMut<GpuArrayBuffer<MeshUniform>>,
+    mut isosurface_instances: ResMut<IsosurfaceInstances>,
+) {
+    for (_, isosurface) in isosurface_instances.iter_mut() {
+        let mesh_uniform = MeshUniform::new(&isosurface.transforms, None);
+        let buffer_index = gpu_array_buffer.push(mesh_uniform);
+        let index = buffer_index.index.get();
+
+        isosurface.indices = Some(IsosurfaceIndices {
+            start: index,
+            count: 1,
+        })
     }
 }

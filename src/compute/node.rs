@@ -7,7 +7,7 @@ use bevy::{
     },
 };
 
-use super::IsosurfaceComputePipeline;
+use super::IsosurfaceComputePipelines;
 
 use crate::IsosurfaceInstances;
 
@@ -24,16 +24,22 @@ impl render_graph::Node for IsosurfaceComputeNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), render_graph::NodeRunError> {
-        let compute_pipeline = world.resource::<IsosurfaceComputePipeline>();
+        let compute_pipeline = world.resource::<IsosurfaceComputePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let Some(find_vertices_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline) else {
+        let Some(find_vertices_pipeline) =
+            pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline)
+        else {
             return Ok(());
         };
-        let Some(connect_vertices_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline) else {
+        let Some(connect_vertices_pipeline) =
+            pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline)
+        else {
             return Ok(());
         };
-        let Some(prepare_indirect_buffer_pipeline) = pipeline_cache.get_compute_pipeline(compute_pipeline.prepare_indirect_buffer_pipeline) else {
+        let Some(prepare_indirect_buffer_pipeline) =
+            pipeline_cache.get_compute_pipeline(compute_pipeline.prepare_indirect_buffer_pipeline)
+        else {
             return Ok(());
         };
         let encoder = render_context.command_encoder();

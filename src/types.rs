@@ -63,13 +63,7 @@ pub struct IsosurfaceIndices {
     pub count: u32,
 }
 
-impl IsosurfaceIndices {
-    pub fn new(start: u32, count: u32) -> Self {
-        Self { start, count }
-    }
-}
-
-// used only to get it's sideof
+// used only to get it's sizeof
 #[derive(ShaderType)]
 #[repr(C)]
 pub struct DrawIndexedIndirect {

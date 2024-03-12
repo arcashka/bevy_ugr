@@ -14,14 +14,16 @@ use std::{borrow::Cow, num::NonZeroU64};
 use crate::types::{DrawIndexedIndirect, IsosurfaceIndices, IsosurfaceUniforms};
 
 #[derive(Resource)]
-pub struct IsosurfaceComputePipeline {
+pub struct IsosurfaceComputePipelines {
     pub compute_bind_group_layout: BindGroupLayout,
+
+    pub prepare_indirect_buffer_pipeline: CachedComputePipelineId,
+
     pub find_vertices_pipeline: CachedComputePipelineId,
     pub connect_vertices_pipeline: CachedComputePipelineId,
-    pub prepare_indirect_buffer_pipeline: CachedComputePipelineId,
 }
 
-impl FromWorld for IsosurfaceComputePipeline {
+impl FromWorld for IsosurfaceComputePipelines {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
 
@@ -77,12 +79,12 @@ impl FromWorld for IsosurfaceComputePipeline {
                 label: Some("isosurface prepare_indirect_buffer pipeline".into()),
                 layout: vec![compute_bind_group_layout.clone()],
                 push_constant_ranges: Vec::new(),
-                shader: shader.clone(),
+                shader,
                 shader_defs: vec![],
                 entry_point: Cow::from("prepare_indirect_buffer"),
             });
 
-        IsosurfaceComputePipeline {
+        IsosurfaceComputePipelines {
             compute_bind_group_layout,
             find_vertices_pipeline,
             connect_vertices_pipeline,

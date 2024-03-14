@@ -1,7 +1,7 @@
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     log::*,
-    pbr::{MeshBindGroups, SetMaterialBindGroup, SetMeshViewBindGroup},
+    pbr::{SetMaterialBindGroup, SetMeshBindGroup, SetMeshViewBindGroup},
     render::{
         render_phase::{
             PhaseItem, RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
@@ -10,12 +10,12 @@ use bevy::{
     },
 };
 
-use crate::IsosurfaceInstances;
+use crate::{types::IsosurfaceBindGroups, IsosurfaceInstances};
 
 pub type DrawIsosurfaceMaterial<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetIsosurfaceBindGroup<1>,
+    SetMeshBindGroup<1>,
     SetMaterialBindGroup<M, 2>,
     DrawIsosurface,
 );
@@ -63,7 +63,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
 pub struct SetIsosurfaceBindGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetIsosurfaceBindGroup<I> {
-    type Param = SRes<MeshBindGroups>;
+    type Param = SRes<IsosurfaceBindGroups>;
     type ViewQuery = ();
     type ItemQuery = ();
 
@@ -77,14 +77,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetIsosurfaceBindGroup<I
     ) -> RenderCommandResult {
         let bind_groups = bind_groups.into_inner();
 
-        let Some(bind_group) =
-            bind_groups.model_only.as_ref()
-        else {
-            error!(
-                "The MeshBindGroups resource wasn't set in the render phase. \
-                It should be set by the prepare_mesh_bind_group system.\n\
-                This is a bevy_isosurface bug! Please open an issue."
-            );
+        let Some(bind_group) = bind_groups.model_only.as_ref() else {
+            error!("missing bind group. Should've been set in prepare_bind_group");
             return RenderCommandResult::Failure;
         };
 

@@ -9,9 +9,9 @@ use bevy::{
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
         screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
-        MaterialPipeline, MaterialPipelineKey, MeshFlags, MeshPipelineKey, MeshTransforms,
-        MeshUniform, NotShadowReceiver, OpaqueRendererMethod, PreviousGlobalTransform,
-        RenderMaterialInstances, RenderMaterials, RenderViewLightProbes,
+        MaterialPipeline, MaterialPipelineKey, MeshFlags, MeshPipeline, MeshPipelineKey,
+        MeshTransforms, MeshUniform, NotShadowReceiver, OpaqueRendererMethod,
+        PreviousGlobalTransform, RenderMaterialInstances, RenderMaterials, RenderViewLightProbes,
         ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod, TransmittedShadowReceiver,
     },
     prelude::*,
@@ -36,8 +36,8 @@ use crate::{
     compute::IsosurfaceComputePipelines,
     draw::DrawIsosurfaceMaterial,
     types::{
-        DrawIndexedIndirect, FakeMesh, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
-        IsosurfaceUniforms,
+        DrawIndexedIndirect, FakeMesh, IsosurfaceBindGroups, IsosurfaceIndices, IsosurfaceInstance,
+        IsosurfaceInstances, IsosurfaceUniforms,
     },
 };
 
@@ -550,6 +550,23 @@ pub fn insert_fake_mesh(
             .entity(entity)
             .insert(FakeMesh(meshes.add(Cuboid::default())));
     }
+}
+
+// I think it can be done only once?
+// then why is it per frame in bevy itself?
+// TODO: figure out
+pub fn prepare_bind_group(
+    mut groups: ResMut<IsosurfaceBindGroups>,
+    mesh_pipeline: Res<MeshPipeline>,
+    render_device: Res<RenderDevice>,
+    mesh_uniforms: Res<GpuArrayBuffer<MeshUniform>>,
+) {
+    groups.reset();
+    let layouts = &mesh_pipeline.mesh_layouts;
+    let Some(model) = mesh_uniforms.binding() else {
+        return;
+    };
+    groups.model_only = Some(layouts.model_only(&render_device, &model));
 }
 
 pub fn prepare_mesh_uniforms(

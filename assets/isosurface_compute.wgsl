@@ -79,7 +79,7 @@ fn cube_vertices(vortex_size: vec3<f32>, vortex_origin: vec3<f32>) -> array<vec3
 }
 
 fn sdf(x: vec3<f32>) -> f32 {
-    return distance(x, polygonization_info.sphere_center) - polygonization_info.sphere_radius;
+    return distance(x, vec3<f32>(0.0, 0.0, 0.0)) - 3.0;
 }
 
 fn sdfs(vertices: array<vec3<f32>, 8>) -> array<f32, 8> {

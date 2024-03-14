@@ -16,7 +16,7 @@ use bevy::{
     },
 };
 
-use types::IsosurfaceInstances;
+use types::{IsosurfaceBindGroups, IsosurfaceInstances};
 
 pub use assets::Isosurface;
 
@@ -43,6 +43,7 @@ impl Plugin for IsosurfacePlugin {
                     systems::prepare_buffers
                         .in_set(RenderSet::PrepareResources)
                         .after(systems::prepare_mesh_uniforms),
+                    systems::prepare_bind_group.in_set(RenderSet::PrepareBindGroups),
                 ),
             )
             .add_render_command::<Transmissive3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
@@ -50,6 +51,7 @@ impl Plugin for IsosurfacePlugin {
             .add_render_command::<Opaque3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
             .add_render_command::<AlphaMask3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
             .init_resource::<IsosurfaceInstances>()
+            .init_resource::<IsosurfaceBindGroups>()
             .add_render_graph_node::<compute::IsosurfaceComputeNode>(
                 Core3d,
                 compute::IsosurfaceComputeNodeLabel,

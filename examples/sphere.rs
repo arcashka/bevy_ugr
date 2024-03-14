@@ -8,6 +8,7 @@ pub fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut isosurfaces: ResMut<Assets<Isosurface>>,
 ) {
     commands.spawn(DirectionalLightBundle {
         transform: Transform::from_xyz(-100.0, 100.0, -100.0).looking_at(Vec3::ZERO, Vec3::Z),
@@ -29,13 +30,12 @@ pub fn setup(
         ..default()
     });
     commands.spawn((
-        Isosurface {
-            radius: 3.0,
-            center: Vec3::new(0.0, 0.0, 0.0),
+        isosurfaces.add(Isosurface {
             grid_size: Vec3::new(7.0, 7.0, 7.0),
             grid_origin: Vec3::new(0.0, 0.0, 0.0),
             grid_density: UVec3::new(1, 1, 1),
-        },
+            ..default()
+        }),
         materials.add(StandardMaterial {
             base_color: Color::ORANGE_RED,
             ..default()

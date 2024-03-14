@@ -1,6 +1,7 @@
 use bevy::{
     prelude::*,
     render::{
+        render_asset::RenderAssets,
         render_graph::{self, RenderGraphContext, RenderLabel},
         render_resource::{ComputePassDescriptor, PipelineCache},
         renderer::RenderContext,
@@ -9,7 +10,7 @@ use bevy::{
 
 use super::IsosurfaceComputePipelines;
 
-use crate::IsosurfaceInstances;
+use crate::{assets::Isosurface, IsosurfaceInstances};
 
 #[derive(Default)]
 pub struct IsosurfaceComputeNode;
@@ -26,6 +27,8 @@ impl render_graph::Node for IsosurfaceComputeNode {
     ) -> Result<(), render_graph::NodeRunError> {
         let compute_pipeline = world.resource::<IsosurfaceComputePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
+
+        let isosurface_assets = world.resource::<RenderAssets<Isosurface>>();
 
         let Some(find_vertices_pipeline) =
             pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline)
@@ -49,6 +52,10 @@ impl render_graph::Node for IsosurfaceComputeNode {
         for (_, isosurface) in isosurfaces.iter() {
             let Some(bind_group) = isosurface.compute_bind_group.as_ref() else {
                 error!("missing isosurface compute bind group");
+                return Ok(());
+            };
+            let Some(isosurface) = isosurface_assets.get(isosurface.asset_id) else {
+                error!("missing isosurface asset");
                 return Ok(());
             };
             let density = isosurface.grid_density;

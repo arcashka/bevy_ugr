@@ -5,10 +5,11 @@ use bevy::{
     render::render_resource::{BindGroup, Buffer, ShaderType},
 };
 
+use crate::assets::Isosurface;
+
 pub struct IsosurfaceInstance {
+    pub asset_id: AssetId<Isosurface>,
     pub fake_mesh_asset: AssetId<Mesh>,
-    pub grid_density: UVec3,
-    pub uniforms: IsosurfaceUniforms,
     pub uniform_buffer: Option<Buffer>,
     pub vertex_buffer: Option<Buffer>,
     pub index_buffer: Option<Buffer>,
@@ -34,24 +35,15 @@ pub struct IsosurfaceUniforms {
     _padding0: u32,
     pub grid_origin: Vec3,
     _padding1: u32,
-    pub sphere_origin: Vec3,
-    pub sphere_radius: f32,
 }
 
 impl IsosurfaceUniforms {
-    pub fn new(
-        grid_size: Vec3,
-        grid_origin: Vec3,
-        sphere_origin: Vec3,
-        sphere_radius: f32,
-    ) -> Self {
+    pub fn new(grid_size: Vec3, grid_origin: Vec3) -> Self {
         Self {
             grid_size,
             _padding0: 0,
             grid_origin,
             _padding1: 0,
-            sphere_origin,
-            sphere_radius,
         }
     }
 }

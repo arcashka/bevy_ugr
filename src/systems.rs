@@ -18,6 +18,7 @@ use bevy::{
     render::{
         camera::TemporalJitter,
         mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
+        render_asset::RenderAssets,
         render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
             BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, GpuArrayBuffer,
@@ -31,13 +32,13 @@ use bevy::{
 };
 
 use crate::{
+    assets::Isosurface,
     compute::IsosurfaceComputePipelines,
     draw::DrawIsosurfaceMaterial,
     types::{
         DrawIndexedIndirect, FakeMesh, IsosurfaceIndices, IsosurfaceInstance, IsosurfaceInstances,
         IsosurfaceUniforms,
     },
-    Isosurface,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -307,6 +308,7 @@ pub fn queue_material_isosurfaces<M: Material>(
 
 pub fn prepare_buffers(
     render_device: Res<RenderDevice>,
+    isosurface_assets: Res<RenderAssets<Isosurface>>,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
 ) {
     for (_, isosurface) in isosurface_instances.iter_mut() {
@@ -345,9 +347,15 @@ pub fn prepare_buffers(
 
         // uniform
         // TODO: write new values instead of recreating this 3... buffers
+        let Some(isosurface_asset) = isosurface_assets.get(isosurface.asset_id) else {
+            error!("isosurface asset not found");
+            return;
+        };
+        let uniforms =
+            IsosurfaceUniforms::new(isosurface_asset.grid_size, isosurface_asset.grid_origin);
         let uniform_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("isosurface uniform buffer"),
-            contents: bytemuck::bytes_of(&isosurface.uniforms),
+            contents: bytemuck::bytes_of(&uniforms),
             usage: BufferUsages::UNIFORM,
         });
         isosurface.uniform_buffer = Some(uniform_buffer);
@@ -467,7 +475,7 @@ pub fn extract_isosurfaces(
     isosurface_query: Extract<
         Query<(
             Entity,
-            &Isosurface,
+            &Handle<Isosurface>,
             &ViewVisibility,
             &GlobalTransform,
             Option<&PreviousGlobalTransform>,
@@ -514,14 +522,8 @@ pub fn extract_isosurfaces(
         isosurface_instances.insert(
             entity,
             IsosurfaceInstance {
+                asset_id: isosurface.id(),
                 fake_mesh_asset: fake_mesh.0.clone().into(),
-                grid_density: isosurface.grid_density,
-                uniforms: IsosurfaceUniforms::new(
-                    isosurface.grid_size,
-                    isosurface.grid_origin,
-                    isosurface.center,
-                    isosurface.radius,
-                ),
                 vertex_buffer: None,
                 index_buffer: None,
                 cell_buffer: None,
@@ -540,7 +542,7 @@ pub fn extract_isosurfaces(
 // ugly hack, required because there is some logic in queue material meshes which needs mesh id
 pub fn insert_fake_mesh(
     mut commands: Commands,
-    mut isosurfaces: Query<Entity, (With<Isosurface>, Without<FakeMesh>)>,
+    mut isosurfaces: Query<Entity, (With<Handle<Isosurface>>, Without<FakeMesh>)>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for entity in isosurfaces.iter_mut() {

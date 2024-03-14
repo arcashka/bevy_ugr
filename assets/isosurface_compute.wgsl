@@ -1,8 +1,6 @@
 struct PolygonizationInfo {
     grid_size: vec3<f32>,
     grid_location: vec3<f32>,
-    sphere_center: vec3<f32>,
-    sphere_radius: f32,
 }
 
 struct DrawIndexedIndirect {

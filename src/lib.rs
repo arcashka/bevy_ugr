@@ -1,3 +1,4 @@
+mod assets;
 mod compute;
 mod draw;
 mod systems;
@@ -10,33 +11,26 @@ use bevy::{
     },
     prelude::*,
     render::{
-        render_graph::RenderGraphApp, render_phase::AddRenderCommand, Render, RenderApp, RenderSet,
+        render_asset::RenderAssetPlugin, render_graph::RenderGraphApp,
+        render_phase::AddRenderCommand, Render, RenderApp, RenderSet,
     },
 };
 
 use types::IsosurfaceInstances;
 
-#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
-pub struct Isosurface {
-    pub radius: f32,
-    pub center: Vec3,
-    pub grid_size: Vec3,
-    pub grid_origin: Vec3,
-    // TODO: there is a better way probably...
-    //
-    // amount of cells in grid is calculated like this
-    // x = 8 * grid_density.x
-    // y = 8 * grid_density.y
-    // z = 8 * grid_density.z
-    pub grid_density: UVec3,
-}
+pub use assets::Isosurface;
 
 #[derive(Default)]
 pub struct IsosurfacePlugin;
 
 impl Plugin for IsosurfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, systems::insert_fake_mesh);
+        app.add_systems(FixedUpdate, systems::insert_fake_mesh)
+            .add_plugins(RenderAssetPlugin::<Isosurface>::default())
+            .register_type::<Isosurface>()
+            .init_asset::<Isosurface>()
+            .register_asset_reflect::<Isosurface>();
+
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, systems::extract_isosurfaces)
             .add_systems(

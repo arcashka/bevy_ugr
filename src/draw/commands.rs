@@ -1,7 +1,7 @@
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     log::*,
-    pbr::{SetMaterialBindGroup, SetMeshBindGroup, SetMeshViewBindGroup},
+    pbr::{SetMaterialBindGroup, SetMeshViewBindGroup},
     render::{
         render_phase::{
             PhaseItem, RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
@@ -15,7 +15,7 @@ use crate::{types::IsosurfaceBindGroups, IsosurfaceInstances};
 pub type DrawIsosurfaceMaterial<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetMeshBindGroup<1>,
+    SetIsosurfaceBindGroup<1>,
     SetMaterialBindGroup<M, 2>,
     DrawIsosurface,
 );

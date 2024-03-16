@@ -18,12 +18,10 @@ use bevy::{
     render::{
         camera::TemporalJitter,
         mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
-        render_asset::RenderAssets,
         render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
-            BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, GpuArrayBuffer,
-            PipelineCache, PrimitiveTopology, SpecializedMeshPipelines, VertexAttribute,
-            VertexBufferLayout, VertexStepMode,
+            BindGroupEntry, GpuArrayBuffer, PipelineCache, PrimitiveTopology,
+            SpecializedMeshPipelines, VertexAttribute, VertexBufferLayout, VertexStepMode,
         },
         renderer::RenderDevice,
         view::{ExtractedView, VisibleEntities},
@@ -34,10 +32,10 @@ use bevy::{
 use crate::{
     assets::Isosurface,
     compute::IsosurfaceComputePipelines,
-    draw::DrawIsosurfaceMaterial,
+    draw::{DrawIsosurfaceMaterial, FakeMesh, IsosurfaceBindGroups},
     types::{
-        DrawIndexedIndirect, FakeMesh, IsosurfaceBindGroups, IsosurfaceIndices, IsosurfaceInstance,
-        IsosurfaceInstances, IsosurfaceUniforms,
+        IsosurfaceBuffersCollection, IsosurfaceIndices, IsosurfaceIndicesCollection,
+        IsosurfaceInstance, IsosurfaceInstances,
     },
 };
 
@@ -306,128 +304,19 @@ pub fn queue_material_isosurfaces<M: Material>(
     }
 }
 
-pub fn prepare_buffers(
-    render_device: Res<RenderDevice>,
-    isosurface_assets: Res<RenderAssets<Isosurface>>,
-    mut isosurface_instances: ResMut<IsosurfaceInstances>,
-) {
-    for (_, isosurface) in isosurface_instances.iter_mut() {
-        // vbo
-        if isosurface.vertex_buffer.is_none() {
-            let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
-                label: Some("isosurface vertex buffer"),
-                size: 1024 * 256,
-                usage: BufferUsages::VERTEX | BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-            isosurface.vertex_buffer = Some(vertex_buffer);
-        }
-
-        // ibo
-        if isosurface.index_buffer.is_none() {
-            let index_buffer = render_device.create_buffer(&BufferDescriptor {
-                label: Some("isosurface index buffer"),
-                size: 1024 * 256,
-                usage: BufferUsages::INDEX | BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-            isosurface.index_buffer = Some(index_buffer);
-        }
-
-        // cells
-        if isosurface.cell_buffer.is_none() {
-            let cells_buffer = render_device.create_buffer(&BufferDescriptor {
-                label: Some("isosurface cells buffer"),
-                size: 1024 * 256,
-                usage: BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-            isosurface.cell_buffer = Some(cells_buffer);
-        }
-
-        // uniform
-        // TODO: write new values instead of recreating this 3... buffers
-        let Some(isosurface_asset) = isosurface_assets.get(isosurface.asset_id) else {
-            error!("isosurface asset not found");
-            return;
-        };
-        let uniforms =
-            IsosurfaceUniforms::new(isosurface_asset.grid_size, isosurface_asset.grid_origin);
-        let uniform_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("isosurface uniform buffer"),
-            contents: bytemuck::bytes_of(&uniforms),
-            usage: BufferUsages::UNIFORM,
-        });
-        isosurface.uniform_buffer = Some(uniform_buffer);
-
-        // atomics
-        let atomics_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("isosurface atomics buffer"),
-            contents: bytemuck::bytes_of(&[0.0, 0.0]),
-            usage: BufferUsages::STORAGE,
-        });
-        isosurface.atomics_buffer = Some(atomics_buffer);
-
-        let Some(indices) = isosurface.indices.as_ref() else {
-            error!("isosurface indices are not set");
-            return;
-        };
-        // indices
-        let indices_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("isosurface indices buffer"),
-            contents: bytemuck::bytes_of(indices),
-            usage: BufferUsages::STORAGE,
-        });
-        isosurface.indices_buffer = Some(indices_buffer);
-
-        // indirect
-        if isosurface.indirect_buffer.is_none() {
-            let indirect_buffer = render_device.create_buffer(&BufferDescriptor {
-                label: Some("isosurface indirect buffer"),
-                size: std::mem::size_of::<DrawIndexedIndirect>() as u64,
-                usage: BufferUsages::STORAGE | BufferUsages::INDIRECT,
-                mapped_at_creation: false,
-            });
-            isosurface.indirect_buffer = Some(indirect_buffer);
-        }
-    }
-}
-
 pub fn prepare_bind_groups(
     render_device: Res<RenderDevice>,
     isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
+    buffers: Res<IsosurfaceBuffersCollection>,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
 ) {
     for (_, isosurface) in isosurface_instances.iter_mut() {
         if isosurface.compute_bind_group.is_some() {
             continue;
         }
-        let Some(uniform_buffer) = isosurface.uniform_buffer.as_ref() else {
-            error!("isosurface uniform buffer is None");
-            return;
-        };
-        let Some(vertex_buffer) = isosurface.vertex_buffer.as_ref() else {
-            error!("isosurface vertex buffer is None");
-            return;
-        };
-        let Some(index_buffer) = isosurface.index_buffer.as_ref() else {
-            error!("isosurface index buffer is None");
-            return;
-        };
-        let Some(cell_buffer) = isosurface.cell_buffer.as_ref() else {
-            error!("isosurface cell buffer is None");
-            return;
-        };
-        let Some(atomics_buffer) = isosurface.atomics_buffer.as_ref() else {
-            error!("isosurface atomics buffer is None");
-            return;
-        };
-        let Some(indices_buffer) = isosurface.indices_buffer.as_ref() else {
-            error!("isosurface indices buffer is None");
-            return;
-        };
-        let Some(indirect_buffer) = isosurface.indirect_buffer.as_ref() else {
-            error!("isosurface indirect buffer is None");
+
+        let Some(buffers) = buffers.get(&isosurface.asset_id) else {
+            error!("isosurface buffers not found");
             return;
         };
 
@@ -437,31 +326,31 @@ pub fn prepare_bind_groups(
             &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
+                    resource: buffers.uniform_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: vertex_buffer.as_entire_binding(),
+                    resource: buffers.vertex_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: index_buffer.as_entire_binding(),
+                    resource: buffers.index_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 3,
-                    resource: cell_buffer.as_entire_binding(),
+                    resource: buffers.cells_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 4,
-                    resource: atomics_buffer.as_entire_binding(),
+                    resource: buffers.atomics_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 5,
-                    resource: indices_buffer.as_entire_binding(),
+                    resource: buffers.indices_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 6,
-                    resource: indirect_buffer.as_entire_binding(),
+                    resource: buffers.indirect_buffer.as_entire_binding(),
                 },
             ],
         );
@@ -524,15 +413,7 @@ pub fn extract_isosurfaces(
             IsosurfaceInstance {
                 asset_id: isosurface.id(),
                 fake_mesh_asset: fake_mesh.0.clone().into(),
-                vertex_buffer: None,
-                index_buffer: None,
-                cell_buffer: None,
-                uniform_buffer: None,
-                atomics_buffer: None,
-                indices_buffer: None,
-                indirect_buffer: None,
                 compute_bind_group: None,
-                indices: None,
                 transforms,
             },
         );
@@ -570,17 +451,19 @@ pub fn prepare_bind_group(
 }
 
 pub fn prepare_mesh_uniforms(
+    isosurface_instances: Res<IsosurfaceInstances>,
     mut gpu_array_buffer: ResMut<GpuArrayBuffer<MeshUniform>>,
-    mut isosurface_instances: ResMut<IsosurfaceInstances>,
+    mut indices_collection: ResMut<IsosurfaceIndicesCollection>,
 ) {
-    for (_, isosurface) in isosurface_instances.iter_mut() {
+    for (_, isosurface) in isosurface_instances.iter() {
         let mesh_uniform = MeshUniform::new(&isosurface.transforms, None);
         let buffer_index = gpu_array_buffer.push(mesh_uniform);
         let index = buffer_index.index.get();
 
-        isosurface.indices = Some(IsosurfaceIndices {
+        let indices = IsosurfaceIndices {
             start: index,
             count: 1,
-        })
+        };
+        indices_collection.insert(isosurface.asset_id, indices);
     }
 }

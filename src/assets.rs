@@ -1,6 +1,13 @@
+use std::marker::PhantomData;
+
 use bevy::{
+    ecs::system::{StaticSystemParam, SystemState},
     prelude::*,
-    render::render_asset::{RenderAsset, RenderAssetUsages},
+    render::{
+        render_asset::{PrepareAssetError, PrepareNextFrameAssets, RenderAsset, RenderAssetUsages},
+        MainWorld, Render, RenderApp, RenderSet,
+    },
+    utils::HashMap,
 };
 
 #[derive(Asset, Clone, Reflect)]
@@ -51,5 +58,119 @@ impl RenderAsset for Isosurface {
             grid_origin: self.grid_origin,
             grid_density: self.grid_density,
         })
+    }
+}
+
+#[derive(Resource, Deref, DerefMut)]
+pub struct NewRenderAssets<A: RenderAsset>(HashMap<AssetId<A>, A::PreparedAsset>);
+
+impl<A: RenderAsset> Default for NewRenderAssets<A> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+// similar to what standard RenderAssetPlugin does but NewRenderAssets<A>
+// only includes RenderAssets which are newly added or modified
+pub struct RenderAssetWatcherPlugin<A: RenderAsset> {
+    phantom: PhantomData<A>,
+}
+
+impl Default for RenderAssetWatcherPlugin<Isosurface> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct ExtractedAssets<A: RenderAsset> {
+    changed_assets: Vec<(AssetId<A>, A)>,
+}
+
+impl<A: RenderAsset> Default for ExtractedAssets<A> {
+    fn default() -> Self {
+        Self {
+            changed_assets: Default::default(),
+        }
+    }
+}
+
+impl<A: RenderAsset> Plugin for RenderAssetWatcherPlugin<A> {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<CachedExtractRenderAssetSystemState<A>>()
+            .register_type::<Isosurface>()
+            .init_asset::<Isosurface>()
+            .register_asset_reflect::<Isosurface>();
+
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<ExtractedAssets<A>>()
+                .init_resource::<NewRenderAssets<A>>()
+                .init_resource::<PrepareNextFrameAssets<A>>()
+                .add_systems(ExtractSchedule, extract_render_asset::<A>)
+                .add_systems(Render, prepare_assets::<A>.in_set(RenderSet::PrepareAssets));
+        }
+    }
+}
+
+#[derive(Resource)]
+struct CachedExtractRenderAssetSystemState<A: RenderAsset> {
+    state: SystemState<(
+        EventReader<'static, 'static, AssetEvent<A>>,
+        Res<'static, Assets<A>>,
+    )>,
+}
+
+impl<A: RenderAsset> FromWorld for CachedExtractRenderAssetSystemState<A> {
+    fn from_world(world: &mut World) -> Self {
+        Self {
+            state: SystemState::new(world),
+        }
+    }
+}
+
+fn extract_render_asset<A: RenderAsset>(mut commands: Commands, mut main_world: ResMut<MainWorld>) {
+    main_world.resource_scope(
+        |world, mut cached_state: Mut<CachedExtractRenderAssetSystemState<A>>| {
+            let (mut events, assets) = cached_state.state.get_mut(world);
+
+            let mut changed_assets = Vec::default();
+
+            for event in events.read() {
+                #[allow(clippy::match_same_arms)]
+                match event {
+                    AssetEvent::Added { id } | AssetEvent::Modified { id } => {
+                        let Some(asset) = assets.get(*id) else {
+                            return;
+                        };
+                        changed_assets.push((*id, asset.clone()));
+                    }
+                    _ => (),
+                }
+            }
+            commands.insert_resource(ExtractedAssets { changed_assets });
+        },
+    );
+}
+
+pub fn prepare_assets<A: RenderAsset>(
+    mut extracted_assets: ResMut<ExtractedAssets<A>>,
+    mut render_assets: ResMut<NewRenderAssets<A>>,
+    param: StaticSystemParam<<A as RenderAsset>::Param>,
+) {
+    let mut param = param.into_inner();
+
+    for (id, extracted_asset) in extracted_assets.changed_assets.drain(..) {
+        match extracted_asset.prepare_asset(&mut param) {
+            Ok(prepared_asset) => {
+                render_assets.insert(id, prepared_asset);
+            }
+            Err(PrepareAssetError::RetryNextUpdate(_)) => {
+                // not possible I think
+                error!("Failed to extract asset: {:?}", id);
+            }
+        }
     }
 }

@@ -10,7 +10,9 @@ use bevy::{
     },
 };
 
-use crate::{types::IsosurfaceBindGroups, IsosurfaceInstances};
+use crate::{types::IsosurfaceBuffersCollection, IsosurfaceInstances};
+
+use super::types::IsosurfaceBindGroups;
 
 pub type DrawIsosurfaceMaterial<M> = (
     SetItemPipeline,
@@ -23,7 +25,7 @@ pub type DrawIsosurfaceMaterial<M> = (
 pub struct DrawIsosurface;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
-    type Param = SRes<IsosurfaceInstances>;
+    type Param = (SRes<IsosurfaceInstances>, SRes<IsosurfaceBuffersCollection>);
     type ViewQuery = ();
     type ItemQuery = ();
 
@@ -32,29 +34,23 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         item: &P,
         _: (),
         _: Option<()>,
-        isosurface_instances: SystemParamItem<'w, '_, Self::Param>,
+        (isosurface_instances, buffers_collection): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        let buffers_collection = buffers_collection.into_inner();
         let isosurface_instances = isosurface_instances.into_inner();
         let Some(isosurface) = isosurface_instances.get(&item.entity()) else {
             error!("isosurface instance not found");
             return RenderCommandResult::Failure;
         };
-        let Some(vertex_buffer) = isosurface.vertex_buffer.as_ref() else {
-            error!("vertex buffer does not exist");
+
+        let Some(buffers) = buffers_collection.get(&isosurface.asset_id) else {
+            error!("isosurface buffers not found");
             return RenderCommandResult::Failure;
         };
-        let Some(index_buffer) = isosurface.index_buffer.as_ref() else {
-            error!("index buffer does not exist");
-            return RenderCommandResult::Failure;
-        };
-        let Some(indirect_buffer) = isosurface.indirect_buffer.as_ref() else {
-            error!("indirect buffer does not exist");
-            return RenderCommandResult::Failure;
-        };
-        pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        pass.set_index_buffer(index_buffer.slice(..), 0, IndexFormat::Uint32);
-        pass.draw_indexed_indirect(indirect_buffer, 0);
+        pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
+        pass.set_index_buffer(buffers.index_buffer.slice(..), 0, IndexFormat::Uint32);
+        pass.draw_indexed_indirect(&buffers.indirect_buffer, 0);
 
         RenderCommandResult::Success
     }

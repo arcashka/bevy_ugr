@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
 use bevy::{
-    ecs::system::{StaticSystemParam, SystemState},
+    ecs::system::SystemState,
     prelude::*,
     render::{
         render_asset::{PrepareAssetError, PrepareNextFrameAssets, RenderAsset, RenderAssetUsages},
@@ -61,69 +59,57 @@ impl RenderAsset for Isosurface {
     }
 }
 
-#[derive(Resource, Deref, DerefMut)]
-pub struct NewRenderAssets<A: RenderAsset>(HashMap<AssetId<A>, A::PreparedAsset>);
+#[derive(Resource, Deref, DerefMut, Default)]
+pub struct IsosurfaceAssetsStorage(HashMap<AssetId<Isosurface>, GpuIsosurface>);
 
-impl<A: RenderAsset> Default for NewRenderAssets<A> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
+#[derive(Deref, DerefMut)]
+pub struct AssetHandled(pub bool);
+
+#[derive(Resource, Deref, DerefMut, Default)]
+pub struct NewIsosurfaceAssets(HashMap<AssetId<Isosurface>, AssetHandled>);
+
+#[derive(Default)]
+pub struct IsosurfaceAssetsPlugin;
+
+#[derive(Resource, Default)]
+struct ExtractedIsosurfaceAssets {
+    changed_assets: Vec<(AssetId<Isosurface>, Isosurface)>,
 }
 
-// similar to what standard RenderAssetPlugin does but NewRenderAssets<A>
-// only includes RenderAssets which are newly added or modified
-pub struct RenderAssetWatcherPlugin<A: RenderAsset> {
-    phantom: PhantomData<A>,
-}
-
-impl Default for RenderAssetWatcherPlugin<Isosurface> {
-    fn default() -> Self {
-        Self {
-            phantom: PhantomData,
-        }
-    }
-}
-
-#[derive(Resource)]
-pub struct ExtractedAssets<A: RenderAsset> {
-    changed_assets: Vec<(AssetId<A>, A)>,
-}
-
-impl<A: RenderAsset> Default for ExtractedAssets<A> {
-    fn default() -> Self {
-        Self {
-            changed_assets: Default::default(),
-        }
-    }
-}
-
-impl<A: RenderAsset> Plugin for RenderAssetWatcherPlugin<A> {
+impl Plugin for IsosurfaceAssetsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CachedExtractRenderAssetSystemState<A>>()
+        app.init_resource::<CachedExtractIsosurfaceAssetSystemState>()
             .register_type::<Isosurface>()
             .init_asset::<Isosurface>()
             .register_asset_reflect::<Isosurface>();
 
         if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
-                .init_resource::<ExtractedAssets<A>>()
-                .init_resource::<NewRenderAssets<A>>()
-                .init_resource::<PrepareNextFrameAssets<A>>()
-                .add_systems(ExtractSchedule, extract_render_asset::<A>)
-                .add_systems(Render, prepare_assets::<A>.in_set(RenderSet::PrepareAssets));
+                .init_resource::<ExtractedIsosurfaceAssets>()
+                .init_resource::<NewIsosurfaceAssets>()
+                .init_resource::<PrepareNextFrameAssets<Isosurface>>()
+                .init_resource::<IsosurfaceAssetsStorage>()
+                .add_systems(ExtractSchedule, extract_isosurface_asset)
+                .add_systems(
+                    Render,
+                    (
+                        prepare_isosurface_assets.in_set(RenderSet::PrepareAssets),
+                        cleanup_assets.in_set(RenderSet::Cleanup),
+                    ),
+                );
         }
     }
 }
 
 #[derive(Resource)]
-struct CachedExtractRenderAssetSystemState<A: RenderAsset> {
+struct CachedExtractIsosurfaceAssetSystemState {
     state: SystemState<(
-        EventReader<'static, 'static, AssetEvent<A>>,
-        Res<'static, Assets<A>>,
+        EventReader<'static, 'static, AssetEvent<Isosurface>>,
+        Res<'static, Assets<Isosurface>>,
     )>,
 }
 
-impl<A: RenderAsset> FromWorld for CachedExtractRenderAssetSystemState<A> {
+impl FromWorld for CachedExtractIsosurfaceAssetSystemState {
     fn from_world(world: &mut World) -> Self {
         Self {
             state: SystemState::new(world),
@@ -131,15 +117,14 @@ impl<A: RenderAsset> FromWorld for CachedExtractRenderAssetSystemState<A> {
     }
 }
 
-fn extract_render_asset<A: RenderAsset>(mut commands: Commands, mut main_world: ResMut<MainWorld>) {
+fn extract_isosurface_asset(mut commands: Commands, mut main_world: ResMut<MainWorld>) {
     main_world.resource_scope(
-        |world, mut cached_state: Mut<CachedExtractRenderAssetSystemState<A>>| {
+        |world, mut cached_state: Mut<CachedExtractIsosurfaceAssetSystemState>| {
             let (mut events, assets) = cached_state.state.get_mut(world);
 
             let mut changed_assets = Vec::default();
 
             for event in events.read() {
-                #[allow(clippy::match_same_arms)]
                 match event {
                     AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                         let Some(asset) = assets.get(*id) else {
@@ -150,22 +135,21 @@ fn extract_render_asset<A: RenderAsset>(mut commands: Commands, mut main_world: 
                     _ => (),
                 }
             }
-            commands.insert_resource(ExtractedAssets { changed_assets });
+            commands.insert_resource(ExtractedIsosurfaceAssets { changed_assets });
         },
     );
 }
 
-pub fn prepare_assets<A: RenderAsset>(
-    mut extracted_assets: ResMut<ExtractedAssets<A>>,
-    mut render_assets: ResMut<NewRenderAssets<A>>,
-    param: StaticSystemParam<<A as RenderAsset>::Param>,
+fn prepare_isosurface_assets(
+    mut extracted_assets: ResMut<ExtractedIsosurfaceAssets>,
+    mut new_assets: ResMut<NewIsosurfaceAssets>,
+    mut storage: ResMut<IsosurfaceAssetsStorage>,
 ) {
-    let mut param = param.into_inner();
-
     for (id, extracted_asset) in extracted_assets.changed_assets.drain(..) {
-        match extracted_asset.prepare_asset(&mut param) {
+        match extracted_asset.prepare_asset(&mut ()) {
             Ok(prepared_asset) => {
-                render_assets.insert(id, prepared_asset);
+                storage.insert(id, prepared_asset);
+                new_assets.insert(id, AssetHandled(false));
             }
             Err(PrepareAssetError::RetryNextUpdate(_)) => {
                 // not possible I think
@@ -173,4 +157,8 @@ pub fn prepare_assets<A: RenderAsset>(
             }
         }
     }
+}
+
+fn cleanup_assets(mut new_assets: ResMut<NewIsosurfaceAssets>) {
+    new_assets.retain(|_, handled| !handled.0);
 }

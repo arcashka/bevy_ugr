@@ -12,7 +12,7 @@ use bevy::{
 
 use crate::{types::IsosurfaceBuffersCollection, IsosurfaceInstances};
 
-use super::types::IsosurfaceBindGroups;
+use super::types::DrawBindGroups;
 
 pub type DrawIsosurfaceMaterial<M> = (
     SetItemPipeline,
@@ -45,8 +45,11 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         };
 
         let Some(buffers) = buffers_collection.get(&isosurface.asset_id) else {
-            error!("isosurface buffers not found");
-            return RenderCommandResult::Failure;
+            error!(
+                "isosurface buffers not found for asset {}",
+                isosurface.asset_id
+            );
+            return RenderCommandResult::Success;
         };
         pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
         pass.set_index_buffer(buffers.index_buffer.slice(..), 0, IndexFormat::Uint32);
@@ -59,7 +62,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
 pub struct SetIsosurfaceBindGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetIsosurfaceBindGroup<I> {
-    type Param = SRes<IsosurfaceBindGroups>;
+    type Param = SRes<DrawBindGroups>;
     type ViewQuery = ();
     type ItemQuery = ();
 

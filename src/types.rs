@@ -2,7 +2,7 @@ use bevy::{
     ecs::entity::EntityHashMap,
     pbr::MeshTransforms,
     prelude::*,
-    render::render_resource::{BindGroup, Buffer, ShaderType},
+    render::render_resource::{Buffer, ShaderType},
     utils::HashMap,
 };
 
@@ -12,7 +12,6 @@ pub struct IsosurfaceInstance {
     pub asset_id: AssetId<Isosurface>,
     // TODO: do it as a component instead
     pub fake_mesh_asset: AssetId<Mesh>,
-    pub compute_bind_group: Option<BindGroup>,
     pub transforms: MeshTransforms,
 }
 

@@ -1,7 +1,12 @@
-use bevy::{prelude::*, render::render_resource::ShaderType};
+use bevy::{
+    prelude::*,
+    render::render_resource::{BindGroup, ShaderType},
+    utils::HashMap,
+};
 
 use crate::Isosurface;
 
+// it's used similar to the way PhaseItems are used in bevy drawing pipeline
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct CalculateIsosurfaces(Vec<AssetId<Isosurface>>);
 
@@ -24,6 +29,9 @@ impl IsosurfaceUniforms {
         }
     }
 }
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct IsosurfaceBindGroupsCollection(HashMap<AssetId<Isosurface>, BindGroup>);
 
 // used only to get it's sizeof
 #[derive(ShaderType)]

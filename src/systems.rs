@@ -20,8 +20,8 @@ use bevy::{
         mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
         render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
-            BindGroupEntry, GpuArrayBuffer, PipelineCache, PrimitiveTopology,
-            SpecializedMeshPipelines, VertexAttribute, VertexBufferLayout, VertexStepMode,
+            GpuArrayBuffer, PipelineCache, PrimitiveTopology, SpecializedMeshPipelines,
+            VertexAttribute, VertexBufferLayout, VertexStepMode,
         },
         renderer::RenderDevice,
         view::{ExtractedView, VisibleEntities},
@@ -31,11 +31,9 @@ use bevy::{
 
 use crate::{
     assets::Isosurface,
-    compute::IsosurfaceComputePipelines,
-    draw::{DrawIsosurfaceMaterial, FakeMesh, IsosurfaceBindGroups},
+    draw::{DrawBindGroups, DrawIsosurfaceMaterial, FakeMesh},
     types::{
-        IsosurfaceBuffersCollection, IsosurfaceIndices, IsosurfaceIndicesCollection,
-        IsosurfaceInstance, IsosurfaceInstances,
+        IsosurfaceIndices, IsosurfaceIndicesCollection, IsosurfaceInstance, IsosurfaceInstances,
     },
 };
 
@@ -304,60 +302,6 @@ pub fn queue_material_isosurfaces<M: Material>(
     }
 }
 
-pub fn prepare_bind_groups(
-    render_device: Res<RenderDevice>,
-    isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
-    buffers: Res<IsosurfaceBuffersCollection>,
-    mut isosurface_instances: ResMut<IsosurfaceInstances>,
-) {
-    for (_, isosurface) in isosurface_instances.iter_mut() {
-        if isosurface.compute_bind_group.is_some() {
-            continue;
-        }
-
-        let Some(buffers) = buffers.get(&isosurface.asset_id) else {
-            error!("isosurface buffers not found");
-            return;
-        };
-
-        let bind_group = render_device.create_bind_group(
-            None,
-            &isosurface_compute_pipeline.compute_bind_group_layout,
-            &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: buffers.uniform_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: buffers.vertex_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: buffers.index_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 3,
-                    resource: buffers.cells_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 4,
-                    resource: buffers.atomics_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 5,
-                    resource: buffers.indices_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 6,
-                    resource: buffers.indirect_buffer.as_entire_binding(),
-                },
-            ],
-        );
-        isosurface.compute_bind_group = Some(bind_group);
-    }
-}
-
 pub fn extract_isosurfaces(
     mut commands: Commands,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
@@ -413,7 +357,6 @@ pub fn extract_isosurfaces(
             IsosurfaceInstance {
                 asset_id: isosurface.id(),
                 fake_mesh_asset: fake_mesh.0.clone().into(),
-                compute_bind_group: None,
                 transforms,
             },
         );
@@ -437,7 +380,7 @@ pub fn insert_fake_mesh(
 // then why is it per frame in bevy itself?
 // TODO: figure out
 pub fn prepare_bind_group(
-    mut groups: ResMut<IsosurfaceBindGroups>,
+    mut groups: ResMut<DrawBindGroups>,
     mesh_pipeline: Res<MeshPipeline>,
     render_device: Res<RenderDevice>,
     mesh_uniforms: Res<GpuArrayBuffer<MeshUniform>>,
@@ -464,6 +407,7 @@ pub fn prepare_mesh_uniforms(
             start: index,
             count: 1,
         };
+        info!("add indices for asset {:?}", isosurface.asset_id);
         indices_collection.insert(isosurface.asset_id, indices);
     }
 }

@@ -7,12 +7,9 @@ use bevy::{
     },
 };
 
-use super::IsosurfaceComputePipelines;
+use super::{CalculateIsosurfaces, IsosurfaceBindGroupsCollection, IsosurfaceComputePipelines};
 
-use crate::{
-    assets::{Isosurface, NewRenderAssets},
-    IsosurfaceInstances,
-};
+use crate::assets::IsosurfaceAssetsStorage;
 
 #[derive(Default)]
 pub struct IsosurfaceComputeNode;
@@ -30,37 +27,38 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let compute_pipeline = world.resource::<IsosurfaceComputePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let isosurface_assets = world.resource::<NewRenderAssets<Isosurface>>();
-
-        let Some(find_vertices_pipeline) =
-            pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline)
+        let (
+            Some(find_vertices_pipeline),
+            Some(connect_vertices_pipeline),
+            Some(prepare_indirect_buffer_pipeline),
+        ) = (
+            pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline),
+            pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline),
+            pipeline_cache.get_compute_pipeline(compute_pipeline.prepare_indirect_buffer_pipeline),
+        )
         else {
-            return Ok(());
-        };
-        let Some(connect_vertices_pipeline) =
-            pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline)
-        else {
-            return Ok(());
-        };
-        let Some(prepare_indirect_buffer_pipeline) =
-            pipeline_cache.get_compute_pipeline(compute_pipeline.prepare_indirect_buffer_pipeline)
-        else {
+            info!("Pipelines are not ready yet");
             return Ok(());
         };
         let encoder = render_context.command_encoder();
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
 
-        let isosurfaces = world.resource::<IsosurfaceInstances>();
-        for (_, isosurface) in isosurfaces.iter() {
-            let Some(bind_group) = isosurface.compute_bind_group.as_ref() else {
-                error!("missing isosurface compute bind group");
-                return Ok(());
-            };
-            let Some(isosurface) = isosurface_assets.get(&isosurface.asset_id) else {
+        let assets = world.resource::<IsosurfaceAssetsStorage>();
+        let isosurfaces = world.resource::<CalculateIsosurfaces>();
+        let bind_groups = world.resource::<IsosurfaceBindGroupsCollection>();
+
+        info!("Node: isosurfaces count: {}", isosurfaces.len());
+        for isosurface in isosurfaces.iter() {
+            let Some(asset) = assets.get(isosurface) else {
                 error!("missing isosurface asset");
                 return Ok(());
             };
-            let density = isosurface.grid_density;
+            let Some(bind_group) = bind_groups.get(isosurface) else {
+                error!("missing isosurface compute bind group");
+                return Ok(());
+            };
+            info!("making compute pass for isosurface {}", isosurface);
+            let density = asset.grid_density;
             pass.set_bind_group(0, bind_group, &[]);
             pass.set_pipeline(find_vertices_pipeline);
             pass.dispatch_workgroups(density.x, density.y, density.z);

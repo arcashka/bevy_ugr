@@ -1,11 +1,11 @@
 use bevy::{prelude::*, render::render_resource::BindGroup};
 
 #[derive(Default, Resource, Deref)]
-pub struct IsosurfaceBindGroups {
+pub struct DrawBindGroups {
     pub model_only: Option<BindGroup>,
 }
 
-impl IsosurfaceBindGroups {
+impl DrawBindGroups {
     pub fn reset(&mut self) {
         self.model_only = None;
     }

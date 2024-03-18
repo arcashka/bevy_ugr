@@ -407,7 +407,6 @@ pub fn prepare_mesh_uniforms(
             start: index,
             count: 1,
         };
-        info!("add indices for asset {:?}", isosurface.asset_id);
         indices_collection.insert(isosurface.asset_id, indices);
     }
 }

@@ -173,13 +173,12 @@ pub fn prepare_bind_groups(
     }
 }
 
-// DIRTY HACK WARNING
-// The idea is to remove CalculateIsosurfaces when we calculated them
-// but we can't do that in the node which calculates them, since we don't have a mutable
-// access to the world there.
-// So instead we check for node code preconditions here and assume, if they are met here
-// then node code also was (or will be next frame) successfully executed
-pub fn cleanup_calculate_isosurface(
+// please see comment above CalculateIsosurfaces for explanation of reasoning behind this 2 systems
+pub fn cleanup_calculated_isosurface(mut isosurfaces: ResMut<CalculateIsosurfaces>) {
+    isosurfaces.retain(|isosurface| !isosurface.ready);
+}
+
+pub fn check_calculate_isosurfaces_for_readiness(
     pipelines: Res<IsosurfaceComputePipelines>,
     pipeline_cache: Res<PipelineCache>,
     mut isosurfaces: ResMut<CalculateIsosurfaces>,
@@ -189,9 +188,8 @@ pub fn cleanup_calculate_isosurface(
         pipeline_cache.get_compute_pipeline(pipelines.connect_vertices_pipeline),
         pipeline_cache.get_compute_pipeline(pipelines.prepare_indirect_buffer_pipeline),
     ) {
-        isosurfaces.retain(|isosurface| !isosurface.marked_for_deletion);
         for isosurface in isosurfaces.iter_mut() {
-            isosurface.marked_for_deletion = true;
+            isosurface.ready = true;
         }
     }
 }

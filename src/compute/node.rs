@@ -37,7 +37,6 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pipeline_cache.get_compute_pipeline(compute_pipelines.prepare_indirect_buffer_pipeline),
         )
         else {
-            info!("Pipelines are not ready yet");
             return Ok(());
         };
         let encoder = render_context.command_encoder();
@@ -48,6 +47,9 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let bind_groups = world.resource::<IsosurfaceBindGroupsCollection>();
 
         for isosurface in isosurfaces.iter() {
+            if !isosurface.ready {
+                continue;
+            }
             let Some(asset) = assets.get(&isosurface.asset_id) else {
                 error!("missing isosurface asset");
                 return Ok(());
@@ -64,6 +66,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pass.dispatch_workgroups(density.x, density.y, density.z);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
+            info!("dispatch done");
         }
         Ok(())
     }

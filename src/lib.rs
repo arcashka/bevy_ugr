@@ -38,11 +38,13 @@ impl Plugin for IsosurfacePlugin {
                 (
                     queue_material_isosurfaces::<StandardMaterial>.in_set(RenderSet::Queue),
                     compute::queue_isosurface_calculations.in_set(RenderSet::Queue),
+                    compute::check_calculate_isosurfaces_for_readiness
+                        .in_set(RenderSet::PrepareBindGroups),
                     compute::prepare_buffers
                         .in_set(RenderSet::PrepareResources)
                         .after(systems::prepare_mesh_uniforms),
                     compute::prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
-                    compute::cleanup_calculate_isosurface.in_set(RenderSet::Cleanup),
+                    compute::cleanup_calculated_isosurface.in_set(RenderSet::Cleanup),
                     prepare_mesh_uniforms.in_set(RenderSet::PrepareResources),
                     prepare_bind_group.in_set(RenderSet::PrepareBindGroups),
                 ),

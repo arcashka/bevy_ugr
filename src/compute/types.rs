@@ -7,8 +7,25 @@ use bevy::{
 use crate::Isosurface;
 
 // it's used similar to the way PhaseItems are used in bevy drawing pipeline
+// they are queued in queue_isosurface_calculations and then cleared in cleanup_calculate_isosurface
+#[derive(Default, Deref, DerefMut, Debug)]
+pub struct CalculateIsosurface {
+    #[deref]
+    pub asset_id: AssetId<Isosurface>,
+    pub marked_for_deletion: bool,
+}
+
+impl CalculateIsosurface {
+    pub fn new(asset_id: AssetId<Isosurface>) -> Self {
+        Self {
+            asset_id,
+            marked_for_deletion: false,
+        }
+    }
+}
+
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct CalculateIsosurfaces(Vec<AssetId<Isosurface>>);
+pub struct CalculateIsosurfaces(Vec<CalculateIsosurface>);
 
 #[derive(ShaderType, Copy, Clone, Debug, PartialEq, Reflect, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]

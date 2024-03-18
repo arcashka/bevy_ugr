@@ -1,13 +1,16 @@
 use bevy::{
     prelude::*,
     render::{
-        render_resource::{BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages},
+        render_resource::{
+            BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, PipelineCache,
+        },
         renderer::RenderDevice,
     },
 };
 
 use crate::{
     assets::{AssetHandled, IsosurfaceAssetsStorage, NewIsosurfaceAssets},
+    compute::types::CalculateIsosurface,
     types::{
         IsosurfaceBuffers, IsosurfaceBuffersCollection, IsosurfaceIndicesCollection,
         IsosurfaceInstances,
@@ -27,11 +30,10 @@ pub fn queue_isosurface_calculations(
     mut new_assets: ResMut<NewIsosurfaceAssets>,
     isosurfaces: Res<IsosurfaceInstances>,
 ) {
-    calculate_isosurfaces.clear();
     for (_, isosurface) in isosurfaces.iter() {
         if let Some(asset_handled) = new_assets.get_mut(&isosurface.asset_id) {
             info!("adding isosurface to calculate");
-            calculate_isosurfaces.push(isosurface.asset_id);
+            calculate_isosurfaces.push(CalculateIsosurface::new(isosurface.asset_id));
             *asset_handled = AssetHandled(true);
         }
     }
@@ -71,7 +73,7 @@ pub fn prepare_buffers(
 
         // uniform
         // TODO: write new values instead of recreating this 3... buffers
-        let Some(asset) = assets.get(isosurface) else {
+        let Some(asset) = assets.get(&isosurface.asset_id) else {
             error!("isosurface asset not found");
             return;
         };
@@ -89,7 +91,7 @@ pub fn prepare_buffers(
             usage: BufferUsages::STORAGE,
         });
 
-        let Some(indices) = indices.get(isosurface) else {
+        let Some(indices) = indices.get(&isosurface.asset_id) else {
             error!("isosurface indices are not set for asset: {:?}", isosurface);
             return;
         };
@@ -116,8 +118,7 @@ pub fn prepare_buffers(
             indices_buffer,
             indirect_buffer,
         };
-        info!("added buffers for isosurface {}", isosurface);
-        buffers_collection.insert(*isosurface, buffers);
+        buffers_collection.insert(isosurface.asset_id, buffers);
     }
 }
 
@@ -129,7 +130,7 @@ pub fn prepare_bind_groups(
     mut bind_groups: ResMut<IsosurfaceBindGroupsCollection>,
 ) {
     for isosurface in isosurfaces.iter() {
-        let Some(buffers) = buffers.get(isosurface) else {
+        let Some(buffers) = buffers.get(&isosurface.asset_id) else {
             error!("isosurface buffers not found");
             return;
         };
@@ -168,7 +169,29 @@ pub fn prepare_bind_groups(
                 },
             ],
         );
-        info!("adding bind group for isosurface {}", isosurface);
-        bind_groups.insert(*isosurface, bind_group);
+        bind_groups.insert(isosurface.asset_id, bind_group);
+    }
+}
+
+// DIRTY HACK WARNING
+// The idea is to remove CalculateIsosurfaces when we calculated them
+// but we can't do that in the node which calculates them, since we don't have a mutable
+// access to the world there.
+// So instead we check for node code preconditions here and assume, if they are met here
+// then node code also was (or will be next frame) successfully executed
+pub fn cleanup_calculate_isosurface(
+    pipelines: Res<IsosurfaceComputePipelines>,
+    pipeline_cache: Res<PipelineCache>,
+    mut isosurfaces: ResMut<CalculateIsosurfaces>,
+) {
+    if let (Some(_), Some(_), Some(_)) = (
+        pipeline_cache.get_compute_pipeline(pipelines.find_vertices_pipeline),
+        pipeline_cache.get_compute_pipeline(pipelines.connect_vertices_pipeline),
+        pipeline_cache.get_compute_pipeline(pipelines.prepare_indirect_buffer_pipeline),
+    ) {
+        isosurfaces.retain(|isosurface| !isosurface.marked_for_deletion);
+        for isosurface in isosurfaces.iter_mut() {
+            isosurface.marked_for_deletion = true;
+        }
     }
 }

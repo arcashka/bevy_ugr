@@ -24,7 +24,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), render_graph::NodeRunError> {
-        let compute_pipeline = world.resource::<IsosurfaceComputePipelines>();
+        let compute_pipelines = world.resource::<IsosurfaceComputePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
         let (
@@ -32,9 +32,9 @@ impl render_graph::Node for IsosurfaceComputeNode {
             Some(connect_vertices_pipeline),
             Some(prepare_indirect_buffer_pipeline),
         ) = (
-            pipeline_cache.get_compute_pipeline(compute_pipeline.find_vertices_pipeline),
-            pipeline_cache.get_compute_pipeline(compute_pipeline.connect_vertices_pipeline),
-            pipeline_cache.get_compute_pipeline(compute_pipeline.prepare_indirect_buffer_pipeline),
+            pipeline_cache.get_compute_pipeline(compute_pipelines.find_vertices_pipeline),
+            pipeline_cache.get_compute_pipeline(compute_pipelines.connect_vertices_pipeline),
+            pipeline_cache.get_compute_pipeline(compute_pipelines.prepare_indirect_buffer_pipeline),
         )
         else {
             info!("Pipelines are not ready yet");
@@ -47,17 +47,15 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let isosurfaces = world.resource::<CalculateIsosurfaces>();
         let bind_groups = world.resource::<IsosurfaceBindGroupsCollection>();
 
-        info!("Node: isosurfaces count: {}", isosurfaces.len());
         for isosurface in isosurfaces.iter() {
-            let Some(asset) = assets.get(isosurface) else {
+            let Some(asset) = assets.get(&isosurface.asset_id) else {
                 error!("missing isosurface asset");
                 return Ok(());
             };
-            let Some(bind_group) = bind_groups.get(isosurface) else {
+            let Some(bind_group) = bind_groups.get(&isosurface.asset_id) else {
                 error!("missing isosurface compute bind group");
                 return Ok(());
             };
-            info!("making compute pass for isosurface {}", isosurface);
             let density = asset.grid_density;
             pass.set_bind_group(0, bind_group, &[]);
             pass.set_pipeline(find_vertices_pipeline);

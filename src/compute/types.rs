@@ -4,7 +4,7 @@ use bevy::{
     utils::HashMap,
 };
 
-use crate::Isosurface;
+use crate::IsosurfaceAsset;
 
 // it's used similar to the way PhaseItems are used in bevy drawing pipeline
 // they are created in queue_isosurface_calculations and then cleared in cleanup_calculate_isosurface
@@ -20,12 +20,12 @@ use crate::Isosurface;
 #[derive(Default, Deref, DerefMut, Debug)]
 pub struct CalculateIsosurface {
     #[deref]
-    pub asset_id: AssetId<Isosurface>,
+    pub asset_id: AssetId<IsosurfaceAsset>,
     pub ready: bool,
 }
 
 impl CalculateIsosurface {
-    pub fn new(asset_id: AssetId<Isosurface>) -> Self {
+    pub fn new(asset_id: AssetId<IsosurfaceAsset>) -> Self {
         Self {
             asset_id,
             ready: false,
@@ -57,7 +57,7 @@ impl IsosurfaceUniforms {
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct IsosurfaceBindGroupsCollection(HashMap<AssetId<Isosurface>, BindGroup>);
+pub struct IsosurfaceBindGroupsCollection(HashMap<AssetId<IsosurfaceAsset>, BindGroup>);
 
 // used only to get it's sizeof
 #[derive(ShaderType)]

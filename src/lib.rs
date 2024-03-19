@@ -21,7 +21,7 @@ use draw::DrawBindGroups;
 use systems::{prepare_bind_group, prepare_mesh_uniforms, queue_material_isosurfaces};
 use types::{IsosurfaceBuffersCollection, IsosurfaceIndicesCollection, IsosurfaceInstances};
 
-pub use assets::Isosurface;
+pub use assets::IsosurfaceAsset;
 
 #[derive(Default)]
 pub struct IsosurfacePlugin;

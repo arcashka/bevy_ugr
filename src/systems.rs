@@ -30,7 +30,7 @@ use bevy::{
 };
 
 use crate::{
-    assets::Isosurface,
+    assets::IsosurfaceAsset,
     draw::{DrawBindGroups, DrawIsosurfaceMaterial, FakeMesh},
     types::{
         IsosurfaceIndices, IsosurfaceIndicesCollection, IsosurfaceInstance, IsosurfaceInstances,
@@ -308,7 +308,7 @@ pub fn extract_isosurfaces(
     isosurface_query: Extract<
         Query<(
             Entity,
-            &Handle<Isosurface>,
+            &Handle<IsosurfaceAsset>,
             &ViewVisibility,
             &GlobalTransform,
             Option<&PreviousGlobalTransform>,
@@ -366,7 +366,7 @@ pub fn extract_isosurfaces(
 // ugly hack, required because there is some logic in queue material meshes which needs mesh id
 pub fn insert_fake_mesh(
     mut commands: Commands,
-    mut isosurfaces: Query<Entity, (With<Handle<Isosurface>>, Without<FakeMesh>)>,
+    mut isosurfaces: Query<Entity, (With<Handle<IsosurfaceAsset>>, Without<FakeMesh>)>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for entity in isosurfaces.iter_mut() {

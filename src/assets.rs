@@ -9,7 +9,7 @@ use bevy::{
 };
 
 #[derive(Asset, Clone, Reflect)]
-pub struct Isosurface {
+pub struct IsosurfaceAsset {
     pub grid_size: Vec3,
     pub grid_origin: Vec3,
     // TODO: there is a better way probably...
@@ -22,7 +22,7 @@ pub struct Isosurface {
     pub asset_usage: RenderAssetUsages,
 }
 
-impl Default for Isosurface {
+impl Default for IsosurfaceAsset {
     fn default() -> Self {
         Self {
             grid_size: Vec3::splat(10.0),
@@ -39,7 +39,7 @@ pub struct GpuIsosurface {
     pub grid_density: UVec3,
 }
 
-impl RenderAsset for Isosurface {
+impl RenderAsset for IsosurfaceAsset {
     type PreparedAsset = GpuIsosurface;
     type Param = ();
 
@@ -60,34 +60,34 @@ impl RenderAsset for Isosurface {
 }
 
 #[derive(Resource, Deref, DerefMut, Default)]
-pub struct IsosurfaceAssetsStorage(HashMap<AssetId<Isosurface>, GpuIsosurface>);
+pub struct IsosurfaceAssetsStorage(HashMap<AssetId<IsosurfaceAsset>, GpuIsosurface>);
 
 #[derive(Deref, DerefMut)]
 pub struct AssetHandled(pub bool);
 
 #[derive(Resource, Deref, DerefMut, Default)]
-pub struct NewIsosurfaceAssets(HashMap<AssetId<Isosurface>, AssetHandled>);
+pub struct NewIsosurfaceAssets(HashMap<AssetId<IsosurfaceAsset>, AssetHandled>);
 
 #[derive(Default)]
 pub struct IsosurfaceAssetsPlugin;
 
 #[derive(Resource, Default)]
 struct ExtractedIsosurfaceAssets {
-    changed_assets: Vec<(AssetId<Isosurface>, Isosurface)>,
+    changed_assets: Vec<(AssetId<IsosurfaceAsset>, IsosurfaceAsset)>,
 }
 
 impl Plugin for IsosurfaceAssetsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CachedExtractIsosurfaceAssetSystemState>()
-            .register_type::<Isosurface>()
-            .init_asset::<Isosurface>()
-            .register_asset_reflect::<Isosurface>();
+            .register_type::<IsosurfaceAsset>()
+            .init_asset::<IsosurfaceAsset>()
+            .register_asset_reflect::<IsosurfaceAsset>();
 
         if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<ExtractedIsosurfaceAssets>()
                 .init_resource::<NewIsosurfaceAssets>()
-                .init_resource::<PrepareNextFrameAssets<Isosurface>>()
+                .init_resource::<PrepareNextFrameAssets<IsosurfaceAsset>>()
                 .init_resource::<IsosurfaceAssetsStorage>()
                 .add_systems(ExtractSchedule, extract_isosurface_asset)
                 .add_systems(
@@ -104,8 +104,8 @@ impl Plugin for IsosurfaceAssetsPlugin {
 #[derive(Resource)]
 struct CachedExtractIsosurfaceAssetSystemState {
     state: SystemState<(
-        EventReader<'static, 'static, AssetEvent<Isosurface>>,
-        Res<'static, Assets<Isosurface>>,
+        EventReader<'static, 'static, AssetEvent<IsosurfaceAsset>>,
+        Res<'static, Assets<IsosurfaceAsset>>,
     )>,
 }
 

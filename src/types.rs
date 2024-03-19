@@ -6,10 +6,10 @@ use bevy::{
     utils::HashMap,
 };
 
-use crate::assets::Isosurface;
+use crate::assets::IsosurfaceAsset;
 
 pub struct IsosurfaceInstance {
-    pub asset_id: AssetId<Isosurface>,
+    pub asset_id: AssetId<IsosurfaceAsset>,
     // TODO: do it as a component instead
     pub fake_mesh_asset: AssetId<Mesh>,
     pub transforms: MeshTransforms,
@@ -26,7 +26,7 @@ pub struct IsosurfaceIndices {
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct IsosurfaceIndicesCollection(HashMap<AssetId<Isosurface>, IsosurfaceIndices>);
+pub struct IsosurfaceIndicesCollection(HashMap<AssetId<IsosurfaceAsset>, IsosurfaceIndices>);
 
 pub struct IsosurfaceBuffers {
     pub uniform_buffer: Buffer,
@@ -39,4 +39,4 @@ pub struct IsosurfaceBuffers {
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct IsosurfaceBuffersCollection(HashMap<AssetId<Isosurface>, IsosurfaceBuffers>);
+pub struct IsosurfaceBuffersCollection(HashMap<AssetId<IsosurfaceAsset>, IsosurfaceBuffers>);

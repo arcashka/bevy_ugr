@@ -2,13 +2,13 @@ use bevy::{pbr::PbrPlugin, prelude::*};
 
 use bevy_flycam::PlayerPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use bevy_isosurface::{Isosurface, IsosurfacePlugin};
+use bevy_isosurface::{IsosurfaceAsset, IsosurfacePlugin};
 
 pub fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut isosurfaces: ResMut<Assets<Isosurface>>,
+    mut isosurfaces: ResMut<Assets<IsosurfaceAsset>>,
 ) {
     commands.spawn(DirectionalLightBundle {
         transform: Transform::from_xyz(-100.0, 100.0, -100.0).looking_at(Vec3::ZERO, Vec3::Z),
@@ -30,7 +30,7 @@ pub fn setup(
         ..default()
     });
     commands.spawn((
-        isosurfaces.add(Isosurface {
+        isosurfaces.add(IsosurfaceAsset {
             grid_size: Vec3::new(7.0, 7.0, 7.0),
             grid_origin: Vec3::new(0.0, 0.0, 0.0),
             grid_density: UVec3::new(1, 1, 1),
@@ -65,6 +65,6 @@ fn main() {
             IsosurfacePlugin,
         ))
         .add_systems(Startup, setup)
-        .register_type::<Isosurface>()
+        .register_type::<IsosurfaceAsset>()
         .run();
 }

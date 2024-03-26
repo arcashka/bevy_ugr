@@ -7,9 +7,12 @@ use bevy::{
     },
 };
 
-use super::{CalculateIsosurfaces, IsosurfaceBindGroupsCollection, IsosurfaceComputePipelines};
+use super::{
+    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
+    IsosurfaceComputePipelines,
+};
 
-use crate::assets::IsosurfaceAssetsStorage;
+use crate::{assets::IsosurfaceAssetsStorage, types::PrepareIndirects};
 
 #[derive(Default)]
 pub struct IsosurfaceComputeNode;
@@ -43,30 +46,66 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
 
         let assets = world.resource::<IsosurfaceAssetsStorage>();
-        let isosurfaces = world.resource::<CalculateIsosurfaces>();
-        let bind_groups = world.resource::<IsosurfaceBindGroupsCollection>();
+        let calculate_tasks = world.resource::<CalculateIsosurfaceTasks>();
+        let prepare_indirects_tasks = world.resource::<PrepareIndirects>();
+        let calculate_bind_groups = world.resource::<CalculateIsosurfaceBindGroups>();
+        let build_indirect_buffer_bind_groups = world.resource::<BuildIndirectBufferBindGroups>();
 
-        for isosurface in isosurfaces.iter() {
-            if !isosurface.ready {
+        info!(
+            "prepare indirects tasks: {:?}",
+            prepare_indirects_tasks.len()
+        );
+
+        // let mut index = 0;
+        // while index < prepare_indirects_tasks.len() {
+        //     let item = &prepare_indirects_tasks[index];
+        //     let batch_range = item.batch_range();
+        //     if batch_range.is_empty() {
+        //         index += 1;
+        //     } else {
+        //         let draw_function = draw_functions.get_mut(item.draw_function()).unwrap();
+        //         draw_function.draw(world, render_pass, view, item);
+        //         index += batch_range.len();
+        //     }
+        // }
+
+        for prepare_indirect_task in prepare_indirects_tasks.iter() {
+            let calculate_task = calculate_tasks.get(&prepare_indirect_task.asset_id);
+            if calculate_task.is_some_and(|ready| !ready) {
+                info!("not ready");
                 continue;
             }
-            let Some(asset) = assets.get(&isosurface.asset_id) else {
-                error!("missing isosurface asset");
-                return Ok(());
-            };
-            let Some(bind_group) = bind_groups.get(&isosurface.asset_id) else {
+
+            let Some(calculate_bind_group) =
+                calculate_bind_groups.get(&prepare_indirect_task.asset_id)
+            else {
                 error!("missing isosurface compute bind group");
-                return Ok(());
+                continue;
             };
-            let density = asset.grid_density;
-            pass.set_bind_group(0, bind_group, &[]);
-            pass.set_pipeline(find_vertices_pipeline);
-            pass.dispatch_workgroups(density.x, density.y, density.z);
-            pass.set_pipeline(connect_vertices_pipeline);
-            pass.dispatch_workgroups(density.x, density.y, density.z);
+            pass.set_bind_group(0, calculate_bind_group, &[]);
+            if calculate_task.is_some() {
+                let Some(asset) = assets.get(&prepare_indirect_task.asset_id) else {
+                    error!("missing isosurface asset");
+                    continue;
+                };
+                let density = asset.grid_density;
+                pass.set_pipeline(find_vertices_pipeline);
+                pass.dispatch_workgroups(density.x, density.y, density.z);
+                pass.set_pipeline(connect_vertices_pipeline);
+                pass.dispatch_workgroups(density.x, density.y, density.z);
+                info!("CALCULATION DISPATCH");
+            }
+
+            let Some(prepare_indirect_bind_group) =
+                build_indirect_buffer_bind_groups.get(&prepare_indirect_task.entity)
+            else {
+                error!("missing isosurface compute bind group");
+                continue;
+            };
+            pass.set_bind_group(1, prepare_indirect_bind_group, &[]);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
-            info!("dispatch done");
+            info!("dispatch");
         }
         Ok(())
     }

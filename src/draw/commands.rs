@@ -10,7 +10,9 @@ use bevy::{
     },
 };
 
-use crate::{types::IsosurfaceBuffersCollection, IsosurfaceInstances};
+use crate::{
+    compute::IndirectBuffersCollection, types::IsosurfaceBuffersCollection, IsosurfaceInstances,
+};
 
 use super::types::DrawBindGroups;
 
@@ -25,7 +27,11 @@ pub type DrawIsosurfaceMaterial<M> = (
 pub struct DrawIsosurface;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
-    type Param = (SRes<IsosurfaceInstances>, SRes<IsosurfaceBuffersCollection>);
+    type Param = (
+        SRes<IsosurfaceInstances>,
+        SRes<IsosurfaceBuffersCollection>,
+        SRes<IndirectBuffersCollection>,
+    );
     type ViewQuery = ();
     type ItemQuery = ();
 
@@ -34,26 +40,31 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         item: &P,
         _: (),
         _: Option<()>,
-        (isosurface_instances, buffers_collection): SystemParamItem<'w, '_, Self::Param>,
+        (isosurface_instances, data_buffers_collection, indirect_buffers_collection): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let buffers_collection = buffers_collection.into_inner();
+        let data_buffers_collection = data_buffers_collection.into_inner();
+        let indirect_buffers_collection = indirect_buffers_collection.into_inner();
         let isosurface_instances = isosurface_instances.into_inner();
         let Some(isosurface) = isosurface_instances.get(&item.entity()) else {
             error!("isosurface instance not found");
             return RenderCommandResult::Failure;
         };
 
-        let Some(buffers) = buffers_collection.get(&isosurface.asset_id) else {
+        let (Some(data_buffers), Some(indirect_buffer)) = (
+            data_buffers_collection.get(&isosurface.asset_id),
+            indirect_buffers_collection.get(&item.entity()),
+        ) else {
             error!(
-                "isosurface buffers not found for asset {}",
-                isosurface.asset_id
+                "isosurface buffers not found for asset {}, entity: {:?}",
+                isosurface.asset_id,
+                item.entity()
             );
             return RenderCommandResult::Success;
         };
-        pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
-        pass.set_index_buffer(buffers.index_buffer.slice(..), 0, IndexFormat::Uint32);
-        pass.draw_indexed_indirect(&buffers.indirect_buffer, 0);
+        pass.set_vertex_buffer(0, data_buffers.vertex_buffer.slice(..));
+        pass.set_index_buffer(data_buffers.index_buffer.slice(..), 0, IndexFormat::Uint32);
+        pass.draw_indexed_indirect(&indirect_buffer.indirect_buffer, 0);
 
         RenderCommandResult::Success
     }

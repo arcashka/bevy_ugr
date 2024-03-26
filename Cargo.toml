@@ -5,12 +5,12 @@ edition = "2021"
 repository = "https://github.com/arcashka/bevy_isosurface"
 
 [dependencies]
-bevy = { version = "0.13" }
+bevy = { path = "../bevy" }
 bytemuck = "1.14"
 
 [dev-dependencies]
-bevy-inspector-egui = { version = "0.23" }
-bevy_flycam = { version = "0.13" }
+bevy-inspector-egui = { path = "../bevy-inspector-egui/crates/bevy-inspector-egui" }
+bevy_flycam = { path = "../bevy_flycam" }
 
 [lints.clippy]
 type_complexity = "allow"

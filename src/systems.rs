@@ -9,15 +9,15 @@ use bevy::{
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
         screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
-        MaterialPipeline, MaterialPipelineKey, MeshFlags, MeshPipeline, MeshPipelineKey,
-        MeshTransforms, MeshUniform, NotShadowReceiver, OpaqueRendererMethod,
+        MaterialBindGroupId, MaterialPipeline, MaterialPipelineKey, MeshFlags, MeshPipeline,
+        MeshPipelineKey, MeshTransforms, MeshUniform, NotShadowReceiver, OpaqueRendererMethod,
         PreviousGlobalTransform, RenderMaterialInstances, RenderMaterials, RenderViewLightProbes,
         ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod, TransmittedShadowReceiver,
     },
     prelude::*,
     render::{
         camera::TemporalJitter,
-        mesh::{InnerMeshVertexBufferLayout, MeshVertexBufferLayout},
+        mesh::{MeshVertexBufferLayout, MeshVertexBufferLayouts},
         render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
             GpuArrayBuffer, PipelineCache, PrimitiveTopology, SpecializedMeshPipelines,
@@ -32,9 +32,7 @@ use bevy::{
 use crate::{
     assets::IsosurfaceAsset,
     draw::{DrawBindGroups, DrawIsosurfaceMaterial, FakeMesh},
-    types::{
-        IsosurfaceIndices, IsosurfaceIndicesCollection, IsosurfaceInstance, IsosurfaceInstances,
-    },
+    types::{IsosurfaceInstance, IsosurfaceInstances},
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -50,6 +48,7 @@ pub fn queue_material_isosurfaces<M: Material>(
     render_materials: Res<RenderMaterials<M>>,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
     render_material_instances: Res<RenderMaterialInstances<M>>,
+    mut vertex_buffer_layouts: ResMut<MeshVertexBufferLayouts>,
     mut views: Query<(
         &ExtractedView,
         &VisibleEntities,
@@ -78,6 +77,7 @@ pub fn queue_material_isosurfaces<M: Material>(
 ) where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
+    info!("queue_material_isosurfaces");
     for (
         view,
         visible_entities,
@@ -200,7 +200,7 @@ pub fn queue_material_isosurfaces<M: Material>(
 
             mesh_key |= alpha_mode_pipeline_key(material.properties.alpha_mode);
 
-            let layout = MeshVertexBufferLayout::new(InnerMeshVertexBufferLayout::new(
+            let layout = MeshVertexBufferLayout::new(
                 [Mesh::ATTRIBUTE_POSITION.id, Mesh::ATTRIBUTE_NORMAL.id].into(),
                 VertexBufferLayout {
                     array_stride: Mesh::ATTRIBUTE_POSITION.format.size()
@@ -220,7 +220,8 @@ pub fn queue_material_isosurfaces<M: Material>(
                     ]
                     .into(),
                 },
-            ));
+            );
+            let layout_ref = vertex_buffer_layouts.insert(layout);
             let pipeline_id = pipelines.specialize(
                 &pipeline_cache,
                 &material_pipeline,
@@ -228,7 +229,7 @@ pub fn queue_material_isosurfaces<M: Material>(
                     mesh_key,
                     bind_group_data: material.key.clone(),
                 },
-                &layout,
+                &layout_ref,
             );
             let pipeline_id = match pipeline_id {
                 Ok(id) => id,
@@ -237,6 +238,8 @@ pub fn queue_material_isosurfaces<M: Material>(
                     continue;
                 }
             };
+
+            isosurface_instance.material_bind_group_id = material.get_bind_group_id();
 
             let distance = rangefinder
                 .distance_translation(&isosurface_instance.transforms.transform.translation)
@@ -275,10 +278,10 @@ pub fn queue_material_isosurfaces<M: Material>(
                         });
                     } else if forward {
                         alpha_mask_phase.add(AlphaMask3d {
+                            asset_id: isosurface_instance.fake_mesh_asset,
                             entity: *visible_entity,
                             draw_function: draw_alpha_mask_pbr,
                             pipeline: pipeline_id,
-                            distance,
                             batch_range: 0..1,
                             dynamic_offset: None,
                         });
@@ -356,7 +359,8 @@ pub fn extract_isosurfaces(
             entity,
             IsosurfaceInstance {
                 asset_id: isosurface.id(),
-                fake_mesh_asset: fake_mesh.0.clone().into(),
+                fake_mesh_asset: fake_mesh.0.id(),
+                material_bind_group_id: MaterialBindGroupId::default(),
                 transforms,
             },
         );
@@ -379,7 +383,7 @@ pub fn insert_fake_mesh(
 // I think it can be done only once?
 // then why is it per frame in bevy itself?
 // TODO: figure out
-pub fn prepare_bind_group(
+pub fn prepare_model_bind_group_layout(
     mut groups: ResMut<DrawBindGroups>,
     mesh_pipeline: Res<MeshPipeline>,
     render_device: Res<RenderDevice>,
@@ -393,20 +397,69 @@ pub fn prepare_bind_group(
     groups.model_only = Some(layouts.model_only(&render_device, &model));
 }
 
-pub fn prepare_mesh_uniforms(
-    isosurface_instances: Res<IsosurfaceInstances>,
-    mut gpu_array_buffer: ResMut<GpuArrayBuffer<MeshUniform>>,
-    mut indices_collection: ResMut<IsosurfaceIndicesCollection>,
-) {
-    for (_, isosurface) in isosurface_instances.iter() {
-        let mesh_uniform = MeshUniform::new(&isosurface.transforms, None);
-        let buffer_index = gpu_array_buffer.push(mesh_uniform);
-        let index = buffer_index.index.get();
-
-        let indices = IsosurfaceIndices {
-            start: index,
-            count: 1,
-        };
-        indices_collection.insert(isosurface.asset_id, indices);
-    }
-}
+// fn fill_tasks<'a, T: PhaseItem>(
+//     phase_items: &'a Vec<T>,
+//     isosurfaces: &'a EntityHashMap<IsosurfaceInstance>,
+//     tasks: &'a mut Vec<PrepareIndirect>,
+// ) {
+//     let mut index = 0;
+//     while index < phase_items.len() {
+//         let item = &phase_items[index];
+//         let batch_range = item.batch_range();
+//         if batch_range.is_empty() {
+//             index += 1;
+//         } else {
+//             if let Some(isosurface) = isosurfaces.get(&item.entity()) {
+//                 tasks.push(PrepareIndirect {
+//                     entity: item.entity(),
+//                     asset_id: isosurface.asset_id,
+//                     indices: Indices {
+//                         instance_count: range.end - range.start,
+//                         first_instance: range.start,
+//                     },
+//                 });
+//             };
+//         }
+//     }
+// }
+//
+// pub fn queue_prepare_indirects(
+//     mut tasks: ResMut<PrepareIndirects>,
+//     isosurfaces: Res<IsosurfaceInstances>,
+//     views: Query<
+//         (
+//             &RenderPhase<Opaque3d>,
+//             &RenderPhase<AlphaMask3d>,
+//             &RenderPhase<Transmissive3d>,
+//             &RenderPhase<Transparent3d>,
+//         ),
+//         With<ExtractedView>,
+//     >,
+// ) {
+//     let to_indices = |range: &Range<u32>| Indices {
+//         instance_count: range.end - range.start,
+//         first_instance: range.start,
+//     };
+//     for (opaque, alpha_mask, transmissive, transparent) in views.iter() {}
+//     for task in tasks.iter_mut() {
+//         for (opaque, alpha_mask, transmissive, transparent) in views.iter() {
+//             if let Some(batch_range) = find_batch_range(entity, &opaque.items) {
+//                 task.indices = to_indices(batch_range);
+//                 break;
+//             }
+//             if let Some(batch_range) = find_batch_range(entity, &alpha_mask.items) {
+//                 task.indices = to_indices(batch_range);
+//                 break;
+//             }
+//             if let Some(batch_range) = find_batch_range(entity, &transmissive.items) {
+//                 task.indices = to_indices(batch_range);
+//                 break;
+//             }
+//             if let Some(batch_range) = find_batch_range(entity, &transparent.items) {
+//                 task.indices = to_indices(batch_range);
+//                 break;
+//             }
+//         }
+//         info!("batch range: {:?}", task.indices);
+//     }
+// }

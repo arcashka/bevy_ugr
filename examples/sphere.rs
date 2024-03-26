@@ -23,25 +23,48 @@ pub fn setup(
     commands.spawn(PbrBundle {
         mesh: meshes.add(Plane3d::default().mesh().size(10.0, 10.0)),
         material: materials.add(StandardMaterial {
-            base_color: Color::GREEN,
+            base_color: Srgba::GREEN.into(),
             ..default()
         }),
         transform: Transform::from_xyz(0.0, 0.0, 0.0),
         ..default()
     });
+
+    let material = materials.add(StandardMaterial {
+        base_color: Srgba::RED.into(),
+        ..default()
+    });
+    let isosurface = isosurfaces.add(IsosurfaceAsset {
+        grid_size: Vec3::new(7.0, 7.0, 7.0),
+        grid_origin: Vec3::new(0.0, 0.0, 0.0),
+        grid_density: UVec3::new(1, 1, 1),
+        ..default()
+    });
     commands.spawn((
-        isosurfaces.add(IsosurfaceAsset {
-            grid_size: Vec3::new(7.0, 7.0, 7.0),
-            grid_origin: Vec3::new(0.0, 0.0, 0.0),
-            grid_density: UVec3::new(1, 1, 1),
-            ..default()
-        }),
-        materials.add(StandardMaterial {
-            base_color: Color::ORANGE_RED,
-            ..default()
-        }),
+        isosurface.clone(),
+        material.clone(),
         SpatialBundle {
             transform: Transform::from_xyz(0.0, 3.0, 0.0),
+            visibility: Visibility::Visible,
+            ..default()
+        },
+    ));
+
+    commands.spawn((
+        isosurface.clone(),
+        material.clone(),
+        SpatialBundle {
+            transform: Transform::from_xyz(5.0, 3.0, 0.0),
+            visibility: Visibility::Visible,
+            ..default()
+        },
+    ));
+
+    commands.spawn((
+        isosurface,
+        material,
+        SpatialBundle {
+            transform: Transform::from_xyz(0.0, 3.0, 5.0),
             visibility: Visibility::Visible,
             ..default()
         },

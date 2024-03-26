@@ -12,14 +12,18 @@ use bevy::{
     },
     prelude::*,
     render::{
-        render_graph::RenderGraphApp, render_phase::AddRenderCommand, Render, RenderApp, RenderSet,
+        batching::batch_and_prepare_render_phase, render_graph::RenderGraphApp,
+        render_phase::AddRenderCommand, Render, RenderApp, RenderSet,
     },
 };
 
-use compute::{CalculateIsosurfaces, IsosurfaceBindGroupsCollection};
-use draw::DrawBindGroups;
-use systems::{prepare_bind_group, prepare_mesh_uniforms, queue_material_isosurfaces};
-use types::{IsosurfaceBuffersCollection, IsosurfaceIndicesCollection, IsosurfaceInstances};
+use compute::{
+    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
+    IndirectBuffersCollection,
+};
+use draw::{DrawBindGroups, IsosurfaceBatcher};
+use systems::{prepare_model_bind_group_layout, queue_material_isosurfaces};
+use types::{IsosurfaceBuffersCollection, IsosurfaceInstances, PrepareIndirects};
 
 pub use assets::IsosurfaceAsset;
 
@@ -36,29 +40,50 @@ impl Plugin for IsosurfacePlugin {
             .add_systems(
                 Render,
                 (
-                    queue_material_isosurfaces::<StandardMaterial>.in_set(RenderSet::Queue),
-                    compute::queue_isosurface_calculations.in_set(RenderSet::Queue),
-                    compute::check_calculate_isosurfaces_for_readiness
+                    (
+                        queue_material_isosurfaces::<StandardMaterial>,
+                        compute::queue_isosurface_calculations,
+                    )
+                        .in_set(RenderSet::Queue),
+                    (
+                        batch_and_prepare_render_phase::<Transmissive3d, IsosurfaceBatcher>,
+                        batch_and_prepare_render_phase::<Transparent3d, IsosurfaceBatcher>,
+                        batch_and_prepare_render_phase::<Opaque3d, IsosurfaceBatcher>,
+                        batch_and_prepare_render_phase::<AlphaMask3d, IsosurfaceBatcher>,
+                        //     .before(queue_prepare_indirects),
+                        // queue_prepare_indirects,
+                    )
+                        // Usually batch_and_prepare_render_phase is called in PrepareResources
+                        // set. But we need to read the instancing info generated there and write
+                        // it to the indirect buffer that's why it's moved to PhaseSort
+                        .in_set(RenderSet::PhaseSort),
+                    (
+                        compute::prepare_calculation_buffers,
+                        compute::prepare_indirect_buffers,
+                        prepare_model_bind_group_layout,
+                    )
+                        .in_set(RenderSet::PrepareResources),
+                    (
+                        compute::check_calculate_isosurfaces_for_readiness,
+                        compute::prepare_calculate_isosurface_bind_groups,
+                        compute::prepare_generate_indirect_buffer_bind_groups,
+                    )
                         .in_set(RenderSet::PrepareBindGroups),
-                    compute::prepare_buffers
-                        .in_set(RenderSet::PrepareResources)
-                        .after(systems::prepare_mesh_uniforms),
-                    compute::prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
                     compute::cleanup_calculated_isosurface.in_set(RenderSet::Cleanup),
-                    prepare_mesh_uniforms.in_set(RenderSet::PrepareResources),
-                    prepare_bind_group.in_set(RenderSet::PrepareBindGroups),
                 ),
             )
             .add_render_command::<Transmissive3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
             .add_render_command::<Transparent3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
             .add_render_command::<Opaque3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
             .add_render_command::<AlphaMask3d, draw::DrawIsosurfaceMaterial<StandardMaterial>>()
-            .init_resource::<CalculateIsosurfaces>()
+            .init_resource::<CalculateIsosurfaceTasks>()
             .init_resource::<IsosurfaceInstances>()
             .init_resource::<DrawBindGroups>()
-            .init_resource::<IsosurfaceIndicesCollection>()
+            .init_resource::<PrepareIndirects>()
+            .init_resource::<IndirectBuffersCollection>()
             .init_resource::<IsosurfaceBuffersCollection>()
-            .init_resource::<IsosurfaceBindGroupsCollection>()
+            .init_resource::<CalculateIsosurfaceBindGroups>()
+            .init_resource::<BuildIndirectBufferBindGroups>()
             .add_render_graph_node::<compute::IsosurfaceComputeNode>(
                 Core3d,
                 compute::IsosurfaceComputeNodeLabel,

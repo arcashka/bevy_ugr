@@ -39,8 +39,8 @@ struct Atomics {
 @group(0) @binding(2) var<storage, read_write> ibo: array<u32>;
 @group(0) @binding(3) var<storage, read_write> vertices: array<VertexInfo>;
 @group(0) @binding(4) var<storage, read_write> atomics: Atomics;
-@group(0) @binding(5) var<storage, read_write> indices: Indices;
-@group(0) @binding(6) var<storage, read_write> indirect: DrawIndexedIndirect;
+@group(1) @binding(0) var<storage, read_write> indices: Indices;
+@group(1) @binding(1) var<storage, read_write> indirect: DrawIndexedIndirect;
 
 fn flat_invocation_id(invocation_id: vec3<u32>, invocations_number: vec3<u32>) -> u32 {
     return invocation_id.x + invocation_id.y * invocations_number.x + invocation_id.z * invocations_number.x * invocations_number.y;
@@ -79,7 +79,12 @@ fn cube_vertices(vortex_size: vec3<f32>, vortex_origin: vec3<f32>) -> array<vec3
 }
 
 fn sdf(x: vec3<f32>) -> f32 {
-    return distance(x, vec3<f32>(0.0, 0.0, 0.0)) - 3.0;
+    let torus_radius = 3.f;
+    let tube_radius = 2.f;
+
+    let q = vec2<f32>(length(x.xy) - torus_radius, x.z);
+    // let sin_deformation = sin(0.4f * atan2(x.y, x.x)) * 1.5f;
+    return length(q) - (tube_radius);
 }
 
 fn sdfs(vertices: array<vec3<f32>, 8>) -> array<f32, 8> {
@@ -248,10 +253,12 @@ fn connect_vertices(@builtin(global_invocation_id) invocation_id: vec3<u32>, @bu
 
 @compute @workgroup_size(1, 1, 1)
 fn prepare_indirect_buffer() {
-    indirect.index_count = atomics.quad_count * 6u;
+    // indirect.first_instance = 0u;
+    // indirect.instance_count = 1u;
+    indirect.first_instance = indices.start;
     indirect.instance_count = indices.count;
+
+    indirect.index_count = atomics.quad_count * 6u;
     indirect.first_index = 0u;
     indirect.vertex_offset = 0i;
-    indirect.first_instance = indices.start;
 }
-

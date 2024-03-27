@@ -11,10 +11,7 @@ use bevy::{
 
 use std::{borrow::Cow, num::NonZeroU64};
 
-use super::{
-    types::{DrawIndexedIndirect, IsosurfaceUniforms},
-    Indices,
-};
+use super::types::{DrawIndexedIndirect, Indices, IsosurfaceUniforms};
 
 #[derive(Resource)]
 pub struct IsosurfaceComputePipelines {

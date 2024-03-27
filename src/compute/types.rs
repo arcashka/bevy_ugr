@@ -1,6 +1,6 @@
 use bevy::{
     prelude::*,
-    render::render_resource::{BindGroup, Buffer, ShaderType},
+    render::render_resource::{BindGroup, ShaderType},
     utils::HashMap,
 };
 
@@ -57,17 +57,18 @@ pub struct DrawIndexedIndirect {
     first_instance: u32,
 }
 
-pub struct IndirectBuffers {
-    pub indices_buffer: Buffer,
-    pub indirect_buffer: Buffer,
-}
-
-#[derive(Resource, Default, Deref, DerefMut)]
-pub struct IndirectBuffersCollection(HashMap<Entity, IndirectBuffers>);
-
 #[derive(ShaderType, Copy, Clone, Reflect, bytemuck::Pod, bytemuck::Zeroable, Default, Debug)]
 #[repr(C)]
 pub struct Indices {
     pub first_instance: u32,
     pub instance_count: u32,
 }
+
+pub struct PrepareIndirect {
+    pub entity: Entity,
+    pub asset_id: AssetId<IsosurfaceAsset>,
+    pub indices: Indices,
+}
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct PrepareIndirects(pub Vec<PrepareIndirect>);

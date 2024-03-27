@@ -11,10 +11,11 @@ use bevy::{
 };
 
 use crate::{
-    compute::IndirectBuffersCollection, types::IsosurfaceBuffersCollection, IsosurfaceInstances,
+    compute::{IndirectBuffersCollection, IsosurfaceBuffersCollection},
+    types::IsosurfaceInstances,
 };
 
-use super::types::DrawBindGroups;
+use super::types::DrawBindGroupLayout;
 
 pub type DrawIsosurfaceMaterial<M> = (
     SetItemPipeline,
@@ -73,7 +74,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
 pub struct SetIsosurfaceBindGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetIsosurfaceBindGroup<I> {
-    type Param = SRes<DrawBindGroups>;
+    type Param = SRes<DrawBindGroupLayout>;
     type ViewQuery = ();
     type ItemQuery = ();
 

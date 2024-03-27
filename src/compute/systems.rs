@@ -11,17 +11,16 @@ use bevy::{
 use crate::{
     assets::{AssetHandled, IsosurfaceAssetsStorage, NewIsosurfaceAssets},
     compute::types::CalculateIsosurfaceTasks,
-    types::{
-        IsosurfaceBuffers, IsosurfaceBuffersCollection, IsosurfaceInstances, PrepareIndirects,
-    },
+    types::IsosurfaceInstances,
 };
 
 use super::{
+    pipeline::IsosurfaceComputePipelines,
     types::{
-        CalculateIsosurfaceBindGroups, DrawIndexedIndirect, IndirectBuffers,
-        IndirectBuffersCollection, IsosurfaceUniforms,
+        BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, DrawIndexedIndirect,
+        IsosurfaceUniforms, PrepareIndirects,
     },
-    BuildIndirectBufferBindGroups, IsosurfaceComputePipelines,
+    IndirectBuffers, IndirectBuffersCollection, IsosurfaceBuffers, IsosurfaceBuffersCollection,
 };
 
 pub fn queue_isosurface_calculations(

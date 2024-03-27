@@ -7,12 +7,15 @@ use bevy::{
     },
 };
 
-use super::{
-    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
-    IsosurfaceComputePipelines,
-};
+use crate::assets::IsosurfaceAssetsStorage;
 
-use crate::{assets::IsosurfaceAssetsStorage, types::PrepareIndirects};
+use super::{
+    pipeline::IsosurfaceComputePipelines,
+    types::{
+        BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
+        PrepareIndirects,
+    },
+};
 
 #[derive(Default)]
 pub struct IsosurfaceComputeNode;

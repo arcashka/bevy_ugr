@@ -1,5 +1,5 @@
 use bevy::{
-    ecs::system::SystemState,
+    ecs::system::{SystemParamItem, SystemState},
     prelude::*,
     render::{
         render_asset::{PrepareAssetError, PrepareNextFrameAssets, RenderAsset, RenderAssetUsages},
@@ -39,22 +39,18 @@ pub struct GpuIsosurface {
     pub grid_density: UVec3,
 }
 
-impl RenderAsset for IsosurfaceAsset {
-    type PreparedAsset = GpuIsosurface;
+impl RenderAsset for GpuIsosurface {
+    type SourceAsset = IsosurfaceAsset;
     type Param = ();
 
-    fn asset_usage(&self) -> RenderAssetUsages {
-        self.asset_usage
-    }
-
     fn prepare_asset(
-        self,
-        _: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
-    ) -> Result<Self::PreparedAsset, bevy::render::render_asset::PrepareAssetError<Self>> {
+        source_asset: Self::SourceAsset,
+        param: &mut SystemParamItem<Self::Param>,
+    ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         Ok(GpuIsosurface {
-            grid_size: self.grid_size,
-            grid_origin: self.grid_origin,
-            grid_density: self.grid_density,
+            grid_size: source_asset.grid_size,
+            grid_origin: source_asset.grid_origin,
+            grid_density: source_asset.grid_density,
         })
     }
 }
@@ -83,11 +79,11 @@ impl Plugin for IsosurfaceAssetsPlugin {
             .init_asset::<IsosurfaceAsset>()
             .register_asset_reflect::<IsosurfaceAsset>();
 
-        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<ExtractedIsosurfaceAssets>()
                 .init_resource::<NewIsosurfaceAssets>()
-                .init_resource::<PrepareNextFrameAssets<IsosurfaceAsset>>()
+                .init_resource::<PrepareNextFrameAssets<GpuIsosurface>>()
                 .init_resource::<IsosurfaceAssetsStorage>()
                 .add_systems(ExtractSchedule, extract_isosurface_asset)
                 .add_systems(
@@ -146,7 +142,7 @@ fn prepare_isosurface_assets(
     mut storage: ResMut<IsosurfaceAssetsStorage>,
 ) {
     for (id, extracted_asset) in extracted_assets.changed_assets.drain(..) {
-        match extracted_asset.prepare_asset(&mut ()) {
+        match GpuIsosurface::prepare_asset(extracted_asset, &mut ()) {
             Ok(prepared_asset) => {
                 storage.insert(id, prepared_asset);
                 new_assets.insert(id, AssetHandled(false));

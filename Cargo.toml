@@ -7,6 +7,8 @@ repository = "https://github.com/arcashka/bevy_isosurface"
 [dependencies]
 bevy = { path = "../bevy" }
 bytemuck = "1.14"
+nonmax = "0.5"
+radsort = "0.1"
 
 [dev-dependencies]
 bevy-inspector-egui = { path = "../bevy-inspector-egui/crates/bevy-inspector-egui" }

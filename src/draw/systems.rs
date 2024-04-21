@@ -2,22 +2,26 @@ use std::hash::Hash;
 
 use bevy::{
     core_pipeline::{
-        core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d},
-        prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
+        core_3d::{AlphaMask3d, Opaque3d, Opaque3dBinKey, Transmissive3d, Transparent3d},
+        prepass::{
+            DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
+            OpaqueNoLightmap3dBinKey,
+        },
         tonemapping::{DebandDither, Tonemapping},
     },
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
         screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
         MaterialPipeline, MaterialPipelineKey, MeshPipeline, MeshPipelineKey, MeshUniform,
-        OpaqueRendererMethod, RenderMaterialInstances, RenderMaterials, RenderViewLightProbes,
+        OpaqueRendererMethod, PreparedMaterial, RenderMaterialInstances, RenderViewLightProbes,
         ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod,
     },
     prelude::*,
     render::{
         camera::TemporalJitter,
         mesh::{MeshVertexBufferLayout, MeshVertexBufferLayouts, PrimitiveTopology},
-        render_phase::{DrawFunctions, RenderPhase},
+        render_asset::RenderAssets,
+        render_phase::{BinnedRenderPhase, DrawFunctions, SortedRenderPhase},
         render_resource::{
             GpuArrayBuffer, PipelineCache, SpecializedMeshPipelines, VertexAttribute,
             VertexBufferLayout, VertexStepMode,
@@ -27,7 +31,7 @@ use bevy::{
     },
 };
 
-use crate::types::IsosurfaceInstances;
+use crate::{types::IsosurfaceInstances, IsosurfaceAsset};
 
 use super::{commands::DrawIsosurfaceMaterial, types::DrawBindGroupLayout};
 
@@ -40,7 +44,7 @@ pub fn queue_material_isosurfaces<M: Material>(
     mut pipelines: ResMut<SpecializedMeshPipelines<MaterialPipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
     msaa: Res<Msaa>,
-    render_materials: Res<RenderMaterials<M>>,
+    render_materials: Res<RenderAssets<PreparedMaterial<M>>>,
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
     render_material_instances: Res<RenderMaterialInstances<M>>,
     mut vertex_buffer_layouts: ResMut<MeshVertexBufferLayouts>,
@@ -60,10 +64,10 @@ pub fn queue_material_isosurfaces<M: Material>(
         Option<&Camera3d>,
         Has<TemporalJitter>,
         Option<&Projection>,
-        &mut RenderPhase<Opaque3d>,
-        &mut RenderPhase<AlphaMask3d>,
-        &mut RenderPhase<Transmissive3d>,
-        &mut RenderPhase<Transparent3d>,
+        &mut BinnedRenderPhase<Opaque3d>,
+        &mut BinnedRenderPhase<AlphaMask3d>,
+        &mut SortedRenderPhase<Transmissive3d>,
+        &mut SortedRenderPhase<Transparent3d>,
         (
             Has<RenderViewLightProbes<EnvironmentMapLight>>,
             Has<RenderViewLightProbes<IrradianceVolume>>,
@@ -142,11 +146,11 @@ pub fn queue_material_isosurfaces<M: Material>(
             ShadowFilteringMethod::Hardware2x2 => {
                 view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2;
             }
-            ShadowFilteringMethod::Castano13 => {
-                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_CASTANO_13;
+            ShadowFilteringMethod::Gaussian => {
+                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN;
             }
-            ShadowFilteringMethod::Jimenez14 => {
-                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_JIMENEZ_14;
+            ShadowFilteringMethod::Temporal => {
+                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL;
             }
         }
 
@@ -168,14 +172,14 @@ pub fn queue_material_isosurfaces<M: Material>(
             );
         }
         let rangefinder = view.rangefinder3d();
-        for visible_entity in &visible_entities.entities {
+        for visible_entity in visible_entities.iter::<With<Handle<IsosurfaceAsset>>>() {
             let Some(material_asset_id) = render_material_instances.get(visible_entity) else {
                 continue;
             };
             let Some(isosurface_instance) = isosurface_instances.get_mut(visible_entity) else {
                 continue;
             };
-            let Some(material) = render_materials.get(material_asset_id) else {
+            let Some(material) = render_materials.get(*material_asset_id) else {
                 continue;
             };
 
@@ -251,14 +255,14 @@ pub fn queue_material_isosurfaces<M: Material>(
                             dynamic_offset: None,
                         });
                     } else if forward {
-                        opaque_phase.add(Opaque3d {
-                            entity: *visible_entity,
-                            draw_function: draw_opaque_pbr,
+                        let key = Opaque3dBinKey {
                             pipeline: pipeline_id,
-                            asset_id: , // will be resolved by replacing phase items
-                            batch_range: 0..1,
-                            dynamic_offset: None,
-                        });
+                            lightmap_image: None,
+                            draw_function: draw_opaque_pbr,
+                            asset_id: AssetId::<Mesh>::default(),
+                            material_bind_group_id: material.get_bind_group_id().0,
+                        };
+                        opaque_phase.add(key, *visible_entity, true);
                     }
                 }
                 AlphaMode::Mask(_) => {
@@ -272,14 +276,13 @@ pub fn queue_material_isosurfaces<M: Material>(
                             dynamic_offset: None,
                         });
                     } else if forward {
-                        alpha_mask_phase.add(AlphaMask3d {
-                            asset_id: 0, // will be resolved by replacing phase items
-                            entity: *visible_entity,
+                        let key = OpaqueNoLightmap3dBinKey {
                             draw_function: draw_alpha_mask_pbr,
                             pipeline: pipeline_id,
-                            batch_range: 0..1,
-                            dynamic_offset: None,
-                        });
+                            asset_id: AssetId::<Mesh>::default(),
+                            material_bind_group_id: material.get_bind_group_id().0,
+                        };
+                        alpha_mask_phase.add(key, *visible_entity, true);
                     }
                 }
                 AlphaMode::Blend

@@ -1,6 +1,6 @@
 mod batching;
 mod commands;
-mod phase_items;
+// mod phase_items;
 mod systems;
 mod types;
 
@@ -10,8 +10,11 @@ use bevy::{
     pbr::StandardMaterial,
     prelude::*,
     render::{
-        batching::batch_and_prepare_render_phase, render_phase::AddRenderCommand, Render,
-        RenderApp, RenderSet,
+        batching::gpu_preprocessing::{
+            batch_and_prepare_binned_render_phase, batch_and_prepare_sorted_render_phase,
+        },
+        render_phase::AddRenderCommand,
+        Render, RenderApp, RenderSet,
     },
 };
 
@@ -26,10 +29,10 @@ impl Plugin for DrawIsosurfacePlugin {
                     systems::queue_material_isosurfaces::<StandardMaterial>
                         .in_set(RenderSet::Queue),
                     (
-                        batch_and_prepare_render_phase::<Transmissive3d, batching::IsosurfaceBatcher>,
-                        batch_and_prepare_render_phase::<Transparent3d, batching::IsosurfaceBatcher>,
-                        batch_and_prepare_render_phase::<Opaque3d, batching::IsosurfaceBatcher>,
-                        batch_and_prepare_render_phase::<AlphaMask3d, batching::IsosurfaceBatcher>,
+                        batch_and_prepare_sorted_render_phase::<Transmissive3d, batching::IsosurfaceBatcher>,
+                        batch_and_prepare_sorted_render_phase::<Transparent3d, batching::IsosurfaceBatcher>,
+                        batch_and_prepare_binned_render_phase::<Opaque3d, batching::IsosurfaceBatcher>,
+                        batch_and_prepare_binned_render_phase::<AlphaMask3d, batching::IsosurfaceBatcher>,
                         //     .before(queue_prepare_indirects),
                         // queue_prepare_indirects,
                     )

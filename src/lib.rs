@@ -4,7 +4,13 @@ mod draw;
 mod systems;
 mod types;
 
-use bevy::{prelude::*, render::RenderApp};
+use bevy::{
+    prelude::*,
+    render::{
+        view::{check_visibility, VisibilitySystems},
+        RenderApp,
+    },
+};
 
 pub use assets::IsosurfaceAsset;
 
@@ -20,7 +26,11 @@ impl Plugin for IsosurfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(assets::IsosurfaceAssetsPlugin)
             .add_plugins(draw::DrawIsosurfacePlugin)
-            .add_plugins(compute::ComputeIsosurfacePlugin);
+            .add_plugins(compute::ComputeIsosurfacePlugin)
+            .add_systems(
+                PostUpdate,
+                check_visibility::<With<Isosurface>>.in_set(VisibilitySystems::CheckVisibility),
+            );
 
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, systems::extract_isosurface_instances)

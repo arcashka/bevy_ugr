@@ -48,12 +48,10 @@ impl Plugin for ComputeIsosurfacePlugin {
                     )
                         .in_set(RenderSet::PrepareResources),
                     (
-                        systems::check_calculate_isosurfaces_for_readiness,
                         systems::prepare_calculate_isosurface_bind_groups,
                         systems::prepare_generate_indirect_buffer_bind_groups,
                     )
                         .in_set(RenderSet::PrepareBindGroups),
-                    systems::cleanup_calculated_isosurface.in_set(RenderSet::Cleanup),
                 ),
             )
             .init_resource::<types::CalculateIsosurfaceTasks>()

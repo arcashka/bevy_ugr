@@ -1,24 +1,13 @@
 use bevy::{
     prelude::*,
     render::render_resource::{BindGroup, ShaderType},
-    utils::HashMap,
+    utils::{HashMap, HashSet},
 };
 
 use crate::IsosurfaceAsset;
 
-// it's used similar to the way PhaseItems are used in bevy drawing pipeline
-// they are created in queue_isosurface_calculations and then cleared in cleanup_calculate_isosurface
-// bool value is used so we can calculate isosurface only once.
-// The idea is:
-// * in the system before IsosurfaceComputeNode we make a check if compute pipelines are ready, if they are
-//   we set it to true
-// * in IsosurfaceComputeNode we call dispatch if it's true
-// * in the system after IsosurfaceComputeNode we remove CalculateIsosurface's which are set to true
-//
-// This hack is needed because it's not possible to mark/remove anything from within the Node,
-// since it has read-only access to the world
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct CalculateIsosurfaceTasks(HashMap<AssetId<IsosurfaceAsset>, bool>);
+pub struct CalculateIsosurfaceTasks(HashSet<AssetId<IsosurfaceAsset>>);
 
 #[derive(ShaderType, Copy, Clone, Debug, PartialEq, Reflect, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]

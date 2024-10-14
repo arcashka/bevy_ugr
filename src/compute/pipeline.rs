@@ -97,6 +97,7 @@ impl FromWorld for IsosurfaceComputePipelines {
                 entry_point: Cow::from("prepare_indirect_buffer"),
             });
 
+        info!("pipelines are queued");
         IsosurfaceComputePipelines {
             calculation_bind_group_layout,
             indirect_bind_group_layout,

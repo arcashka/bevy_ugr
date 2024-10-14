@@ -59,25 +59,8 @@ impl render_graph::Node for IsosurfaceComputeNode {
             prepare_indirects_tasks.len()
         );
 
-        // let mut index = 0;
-        // while index < prepare_indirects_tasks.len() {
-        //     let item = &prepare_indirects_tasks[index];
-        //     let batch_range = item.batch_range();
-        //     if batch_range.is_empty() {
-        //         index += 1;
-        //     } else {
-        //         let draw_function = draw_functions.get_mut(item.draw_function()).unwrap();
-        //         draw_function.draw(world, render_pass, view, item);
-        //         index += batch_range.len();
-        //     }
-        // }
-
         for prepare_indirect_task in prepare_indirects_tasks.iter() {
             let calculate_task = calculate_tasks.get(&prepare_indirect_task.asset_id);
-            if calculate_task.is_some_and(|ready| !ready) {
-                info!("not ready");
-                continue;
-            }
 
             let Some(calculate_bind_group) =
                 calculate_bind_groups.get(&prepare_indirect_task.asset_id)
@@ -96,7 +79,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
                 pass.dispatch_workgroups(density.x, density.y, density.z);
                 pass.set_pipeline(connect_vertices_pipeline);
                 pass.dispatch_workgroups(density.x, density.y, density.z);
-                info!("CALCULATION DISPATCH");
+                info!("calculation dispatch");
             }
 
             let Some(prepare_indirect_bind_group) =

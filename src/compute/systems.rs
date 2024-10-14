@@ -1,9 +1,7 @@
 use bevy::{
     prelude::*,
     render::{
-        render_resource::{
-            BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages, PipelineCache,
-        },
+        render_resource::{BindGroupEntry, BufferDescriptor, BufferInitDescriptor, BufferUsages},
         renderer::RenderDevice,
     },
 };
@@ -31,7 +29,7 @@ pub fn queue_isosurface_calculations(
     for (_, instance) in isosurface_instances.iter() {
         if let Some(asset_handled) = new_assets.get_mut(&instance.asset_id) {
             info!("adding isosurface to calculate");
-            tasks.insert(instance.asset_id, false);
+            tasks.insert(instance.asset_id);
             *asset_handled = AssetHandled(true);
         }
     }
@@ -43,7 +41,7 @@ pub fn prepare_calculation_buffers(
     tasks: Res<CalculateIsosurfaceTasks>,
     mut buffers_collection: ResMut<IsosurfaceBuffersCollection>,
 ) {
-    for (asset_id, _) in tasks.iter() {
+    for asset_id in tasks.iter() {
         let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("isosurface vertex buffer"),
             size: 1024 * 256,
@@ -129,7 +127,7 @@ pub fn prepare_calculate_isosurface_bind_groups(
     tasks: Res<CalculateIsosurfaceTasks>,
     mut bind_groups: ResMut<CalculateIsosurfaceBindGroups>,
 ) {
-    for (asset_id, _) in tasks.iter() {
+    for asset_id in tasks.iter() {
         let Some(buffers) = buffers.get(asset_id) else {
             error!("isosurface buffers not found");
             return;
@@ -193,27 +191,5 @@ pub fn prepare_generate_indirect_buffer_bind_groups(
             ],
         );
         bind_groups.insert(task.entity, bind_group);
-    }
-}
-
-// please see comment above CalculateIsosurfaces for explanation of reasoning behind this 2 systems
-pub fn cleanup_calculated_isosurface(mut tasks: ResMut<CalculateIsosurfaceTasks>) {
-    tasks.retain(|_, done| !(*done));
-}
-
-pub fn check_calculate_isosurfaces_for_readiness(
-    pipelines: Res<IsosurfaceComputePipelines>,
-    pipeline_cache: Res<PipelineCache>,
-    mut tasks: ResMut<CalculateIsosurfaceTasks>,
-) {
-    if let (Some(_), Some(_), Some(_)) = (
-        pipeline_cache.get_compute_pipeline(pipelines.find_vertices_pipeline),
-        pipeline_cache.get_compute_pipeline(pipelines.connect_vertices_pipeline),
-        pipeline_cache.get_compute_pipeline(pipelines.prepare_indirect_buffer_pipeline),
-    ) {
-        for (_, ready) in tasks.iter_mut() {
-            info!("mark isosurafece as ready");
-            *ready = true;
-        }
     }
 }

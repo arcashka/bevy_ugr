@@ -26,12 +26,11 @@ pub struct IsosurfaceBuffers {
 pub struct IsosurfaceBuffersCollection(HashMap<AssetId<IsosurfaceAsset>, IsosurfaceBuffers>);
 
 pub struct IndirectBuffers {
-    pub indices_buffer: Buffer,
     pub indirect_buffer: Buffer,
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct IndirectBuffersCollection(HashMap<Entity, IndirectBuffers>);
+pub struct IndirectBuffersCollection(HashMap<AssetId<IsosurfaceAsset>, IndirectBuffers>);
 
 pub struct ComputeIsosurfacePlugin;
 
@@ -41,17 +40,9 @@ impl Plugin for ComputeIsosurfacePlugin {
             .add_systems(
                 Render,
                 (
-                    (systems::queue_isosurface_calculations).in_set(RenderSet::Queue),
-                    (
-                        systems::prepare_calculation_buffers,
-                        systems::prepare_indirect_buffers,
-                    )
-                        .in_set(RenderSet::PrepareResources),
-                    (
-                        systems::prepare_calculate_isosurface_bind_groups,
-                        systems::prepare_generate_indirect_buffer_bind_groups,
-                    )
-                        .in_set(RenderSet::PrepareBindGroups),
+                    systems::queue_isosurface_calculations.in_set(RenderSet::Queue),
+                    systems::prepare_buffers.in_set(RenderSet::PrepareResources),
+                    systems::prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
                 ),
             )
             .init_resource::<types::CalculateIsosurfaceTasks>()
@@ -59,7 +50,6 @@ impl Plugin for ComputeIsosurfacePlugin {
             .init_resource::<IsosurfaceBuffersCollection>()
             .init_resource::<types::CalculateIsosurfaceBindGroups>()
             .init_resource::<types::BuildIndirectBufferBindGroups>()
-            .init_resource::<types::PrepareIndirects>()
             .add_render_graph_node::<node::IsosurfaceComputeNode>(
                 Core3d,
                 node::IsosurfaceComputeNodeLabel,

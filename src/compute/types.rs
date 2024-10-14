@@ -33,7 +33,7 @@ impl IsosurfaceUniforms {
 pub struct CalculateIsosurfaceBindGroups(HashMap<AssetId<IsosurfaceAsset>, BindGroup>);
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct BuildIndirectBufferBindGroups(HashMap<Entity, BindGroup>);
+pub struct BuildIndirectBufferBindGroups(HashMap<AssetId<IsosurfaceAsset>, BindGroup>);
 
 // used only to get it's sizeof
 #[derive(ShaderType)]
@@ -45,19 +45,3 @@ pub struct DrawIndexedIndirect {
     vertex_offset: i32,
     first_instance: u32,
 }
-
-#[derive(ShaderType, Copy, Clone, Reflect, bytemuck::Pod, bytemuck::Zeroable, Default, Debug)]
-#[repr(C)]
-pub struct Indices {
-    pub first_instance: u32,
-    pub instance_count: u32,
-}
-
-pub struct PrepareIndirect {
-    pub entity: Entity,
-    pub asset_id: AssetId<IsosurfaceAsset>,
-    pub indices: Indices,
-}
-
-#[derive(Resource, Default, Deref, DerefMut)]
-pub struct PrepareIndirects(pub Vec<PrepareIndirect>);

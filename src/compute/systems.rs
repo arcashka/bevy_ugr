@@ -16,30 +16,31 @@ use super::{
     pipeline::IsosurfaceComputePipelines,
     types::{
         BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, DrawIndexedIndirect,
-        IsosurfaceUniforms, PrepareIndirects,
+        IsosurfaceUniforms,
     },
     IndirectBuffers, IndirectBuffersCollection, IsosurfaceBuffers, IsosurfaceBuffersCollection,
 };
 
 pub fn queue_isosurface_calculations(
-    mut tasks: ResMut<CalculateIsosurfaceTasks>,
+    mut calculate_tasks: ResMut<CalculateIsosurfaceTasks>,
     mut new_assets: ResMut<NewIsosurfaceAssets>,
     isosurface_instances: Res<IsosurfaceInstances>,
 ) {
     for (_, instance) in isosurface_instances.iter() {
         if let Some(asset_handled) = new_assets.get_mut(&instance.asset_id) {
             info!("adding isosurface to calculate");
-            tasks.insert(instance.asset_id);
+            calculate_tasks.insert(instance.asset_id);
             *asset_handled = AssetHandled(true);
         }
     }
 }
 
-pub fn prepare_calculation_buffers(
+pub fn prepare_buffers(
     render_device: Res<RenderDevice>,
     assets: Res<IsosurfaceAssetsStorage>,
     tasks: Res<CalculateIsosurfaceTasks>,
-    mut buffers_collection: ResMut<IsosurfaceBuffersCollection>,
+    mut calculate_buffers_collection: ResMut<IsosurfaceBuffersCollection>,
+    mut indirect_buffers_collection: ResMut<IndirectBuffersCollection>,
 ) {
     for asset_id in tasks.iter() {
         let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
@@ -81,28 +82,13 @@ pub fn prepare_calculation_buffers(
             usage: BufferUsages::STORAGE,
         });
 
-        let buffers = IsosurfaceBuffers {
+        let calculate_buffers = IsosurfaceBuffers {
             vertex_buffer,
             index_buffer,
             cells_buffer,
             uniform_buffer,
             atomics_buffer,
         };
-        buffers_collection.insert(*asset_id, buffers);
-    }
-}
-
-pub fn prepare_indirect_buffers(
-    render_device: Res<RenderDevice>,
-    tasks: Res<PrepareIndirects>,
-    mut indirect_buffers: ResMut<IndirectBuffersCollection>,
-) {
-    for task in tasks.iter() {
-        let indices_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("Indices buffer"),
-            contents: bytemuck::bytes_of(&task.indices),
-            usage: BufferUsages::STORAGE,
-        });
 
         let indirect_buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("Indirect buffer"),
@@ -110,86 +96,67 @@ pub fn prepare_indirect_buffers(
             usage: BufferUsages::STORAGE | BufferUsages::INDIRECT,
             mapped_at_creation: false,
         });
-        indirect_buffers.insert(
-            task.entity,
-            IndirectBuffers {
-                indices_buffer,
-                indirect_buffer,
-            },
-        );
+
+        indirect_buffers_collection.insert(*asset_id, IndirectBuffers { indirect_buffer });
+        calculate_buffers_collection.insert(*asset_id, calculate_buffers);
     }
 }
 
-pub fn prepare_calculate_isosurface_bind_groups(
+pub fn prepare_bind_groups(
     render_device: Res<RenderDevice>,
     isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
-    buffers: Res<IsosurfaceBuffersCollection>,
+    calculate_buffers: Res<IsosurfaceBuffersCollection>,
+    indirect_buffers: Res<IndirectBuffersCollection>,
     tasks: Res<CalculateIsosurfaceTasks>,
-    mut bind_groups: ResMut<CalculateIsosurfaceBindGroups>,
+    mut calculate_bind_groups: ResMut<CalculateIsosurfaceBindGroups>,
+    mut indirect_bind_groups: ResMut<BuildIndirectBufferBindGroups>,
 ) {
     for asset_id in tasks.iter() {
-        let Some(buffers) = buffers.get(asset_id) else {
+        let Some(calculate_buffers) = calculate_buffers.get(asset_id) else {
             error!("isosurface buffers not found");
             return;
         };
 
-        let bind_group = render_device.create_bind_group(
+        let Some(indirect_buffers) = indirect_buffers.get(asset_id) else {
+            error!("isosurface buffers not found");
+            return;
+        };
+
+        let calculate_bind_group = render_device.create_bind_group(
             None,
             &isosurface_compute_pipeline.calculation_bind_group_layout,
             &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: buffers.uniform_buffer.as_entire_binding(),
+                    resource: calculate_buffers.uniform_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: buffers.vertex_buffer.as_entire_binding(),
+                    resource: calculate_buffers.vertex_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: buffers.index_buffer.as_entire_binding(),
+                    resource: calculate_buffers.index_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 3,
-                    resource: buffers.cells_buffer.as_entire_binding(),
+                    resource: calculate_buffers.cells_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 4,
-                    resource: buffers.atomics_buffer.as_entire_binding(),
+                    resource: calculate_buffers.atomics_buffer.as_entire_binding(),
                 },
             ],
         );
-        bind_groups.insert(*asset_id, bind_group);
-    }
-}
-
-pub fn prepare_generate_indirect_buffer_bind_groups(
-    render_device: Res<RenderDevice>,
-    isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
-    buffers: Res<IndirectBuffersCollection>,
-    tasks: Res<PrepareIndirects>,
-    mut bind_groups: ResMut<BuildIndirectBufferBindGroups>,
-) {
-    for task in tasks.iter() {
-        let Some(buffers) = buffers.get(&task.entity) else {
-            error!("Indirect buffer not found");
-            return;
-        };
-
-        let bind_group = render_device.create_bind_group(
+        let indirect_bind_group = render_device.create_bind_group(
             None,
             &isosurface_compute_pipeline.indirect_bind_group_layout,
-            &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: buffers.indices_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: buffers.indirect_buffer.as_entire_binding(),
-                },
-            ],
+            &[BindGroupEntry {
+                binding: 0,
+                resource: indirect_buffers.indirect_buffer.as_entire_binding(),
+            }],
         );
-        bind_groups.insert(task.entity, bind_group);
+        indirect_bind_groups.insert(*asset_id, indirect_bind_group);
+        calculate_bind_groups.insert(*asset_id, calculate_bind_group);
     }
 }

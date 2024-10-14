@@ -53,7 +53,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
 
         let (Some(data_buffers), Some(indirect_buffer)) = (
             data_buffers_collection.get(&isosurface.asset_id),
-            indirect_buffers_collection.get(&item.entity()),
+            indirect_buffers_collection.get(&isosurface.asset_id),
         ) else {
             error!(
                 "isosurface buffers not found for asset {}, entity: {:?}",

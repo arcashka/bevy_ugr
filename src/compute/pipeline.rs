@@ -11,7 +11,7 @@ use bevy::{
 
 use std::{borrow::Cow, num::NonZeroU64};
 
-use super::types::{DrawIndexedIndirect, Indices, IsosurfaceUniforms};
+use super::types::{DrawIndexedIndirect, IsosurfaceUniforms};
 
 #[derive(Resource)]
 pub struct IsosurfaceComputePipelines {
@@ -52,8 +52,6 @@ impl FromWorld for IsosurfaceComputePipelines {
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::COMPUTE,
                 (
-                    // indices
-                    binding_types::storage_buffer::<Indices>(false),
                     // indirect
                     binding_types::storage_buffer::<DrawIndexedIndirect>(false),
                 ),

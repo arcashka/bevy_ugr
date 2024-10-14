@@ -1,8 +1,6 @@
 use bevy::{pbr::PbrPlugin, prelude::*};
 
-use bevy_flycam::PlayerPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use bevy_isosurface::{IsosurfaceAsset, IsosurfacePlugin};
+use bevy_ugr::{Isosurface, IsosurfaceAsset, IsosurfacePlugin};
 
 pub fn setup(
     mut commands: Commands,
@@ -10,61 +8,37 @@ pub fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut isosurfaces: ResMut<Assets<IsosurfaceAsset>>,
 ) {
-    commands.spawn(DirectionalLightBundle {
-        transform: Transform::from_xyz(-100.0, 100.0, -100.0).looking_at(Vec3::ZERO, Vec3::Z),
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             shadows_enabled: true,
             illuminance: 20000.0,
             ..default()
         },
-        ..default()
-    });
+        SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
+    ));
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default().mesh().size(10.0, 10.0)),
-        material: materials.add(StandardMaterial {
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(10.0, 10.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Srgba::GREEN.into(),
             ..default()
-        }),
-        transform: Transform::from_xyz(0.0, 0.0, 0.0),
-        ..default()
-    });
+        })),
+        SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
+    ));
 
-    let material = materials.add(StandardMaterial {
-        base_color: Srgba::RED.into(),
-        ..default()
-    });
-    let isosurface = isosurfaces.add(IsosurfaceAsset {
-        grid_size: Vec3::new(7.0, 7.0, 7.0),
-        grid_origin: Vec3::new(0.0, 0.0, 0.0),
-        grid_density: UVec3::new(1, 1, 1),
-        ..default()
-    });
     commands.spawn((
-        isosurface.clone(),
-        material.clone(),
+        Isosurface(isosurfaces.add(IsosurfaceAsset {
+            grid_size: Vec3::new(7.0, 7.0, 7.0),
+            grid_origin: Vec3::new(0.0, 0.0, 0.0),
+            grid_density: UVec3::new(1, 1, 1),
+            ..default()
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Srgba::RED.into(),
+            ..default()
+        })),
         SpatialBundle {
             transform: Transform::from_xyz(0.0, 3.0, 0.0),
-            visibility: Visibility::Visible,
-            ..default()
-        },
-    ));
-
-    commands.spawn((
-        isosurface.clone(),
-        material.clone(),
-        SpatialBundle {
-            transform: Transform::from_xyz(5.0, 3.0, 0.0),
-            visibility: Visibility::Visible,
-            ..default()
-        },
-    ));
-
-    commands.spawn((
-        isosurface,
-        material,
-        SpatialBundle {
-            transform: Transform::from_xyz(0.0, 3.0, 5.0),
             visibility: Visibility::Visible,
             ..default()
         },
@@ -83,8 +57,6 @@ fn main() {
                     prepass_enabled: false,
                     ..default()
                 }),
-            WorldInspectorPlugin::new(),
-            PlayerPlugin,
             IsosurfacePlugin,
         ))
         .add_systems(Startup, setup)

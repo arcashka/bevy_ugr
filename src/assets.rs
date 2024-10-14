@@ -33,21 +33,21 @@ impl Default for IsosurfaceAsset {
     }
 }
 
-pub struct GpuIsosurface {
+pub struct RenderIsosurface {
     pub grid_size: Vec3,
     pub grid_origin: Vec3,
     pub grid_density: UVec3,
 }
 
-impl RenderAsset for GpuIsosurface {
+impl RenderAsset for RenderIsosurface {
     type SourceAsset = IsosurfaceAsset;
     type Param = ();
 
     fn prepare_asset(
         source_asset: Self::SourceAsset,
-        param: &mut SystemParamItem<Self::Param>,
+        _param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
-        Ok(GpuIsosurface {
+        Ok(RenderIsosurface {
             grid_size: source_asset.grid_size,
             grid_origin: source_asset.grid_origin,
             grid_density: source_asset.grid_density,
@@ -56,7 +56,7 @@ impl RenderAsset for GpuIsosurface {
 }
 
 #[derive(Resource, Deref, DerefMut, Default)]
-pub struct IsosurfaceAssetsStorage(HashMap<AssetId<IsosurfaceAsset>, GpuIsosurface>);
+pub struct IsosurfaceAssetsStorage(HashMap<AssetId<IsosurfaceAsset>, RenderIsosurface>);
 
 #[derive(Deref, DerefMut)]
 pub struct AssetHandled(pub bool);
@@ -83,7 +83,7 @@ impl Plugin for IsosurfaceAssetsPlugin {
             render_app
                 .init_resource::<ExtractedIsosurfaceAssets>()
                 .init_resource::<NewIsosurfaceAssets>()
-                .init_resource::<PrepareNextFrameAssets<GpuIsosurface>>()
+                .init_resource::<PrepareNextFrameAssets<RenderIsosurface>>()
                 .init_resource::<IsosurfaceAssetsStorage>()
                 .add_systems(ExtractSchedule, extract_isosurface_asset)
                 .add_systems(
@@ -142,14 +142,14 @@ fn prepare_isosurface_assets(
     mut storage: ResMut<IsosurfaceAssetsStorage>,
 ) {
     for (id, extracted_asset) in extracted_assets.changed_assets.drain(..) {
-        match GpuIsosurface::prepare_asset(extracted_asset, &mut ()) {
+        match RenderIsosurface::prepare_asset(extracted_asset, &mut ()) {
             Ok(prepared_asset) => {
                 storage.insert(id, prepared_asset);
                 new_assets.insert(id, AssetHandled(false));
             }
-            Err(PrepareAssetError::RetryNextUpdate(_)) => {
-                // not possible I think
-                error!("Failed to extract asset: {:?}", id);
+            Err(e) => {
+                // one of them should panic??
+                error!("{}", e);
             }
         }
     }

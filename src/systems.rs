@@ -5,20 +5,21 @@ use bevy::{
     },
     prelude::*,
     render::Extract,
+    utils::Parallel,
 };
 
 use crate::{
-    assets::IsosurfaceAsset,
     types::{IsosurfaceInstance, IsosurfaceInstances},
+    Isosurface,
 };
 
-pub fn extract_isosurfaces(
-    mut commands: Commands,
+pub fn extract_isosurface_instances(
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
-    isosurface_query: Extract<
+    mut render_isosurface_instance_queues: Local<Parallel<Vec<(Entity, IsosurfaceInstance)>>>,
+    isosurfaces_query: Extract<
         Query<(
             Entity,
-            &Handle<IsosurfaceAsset>,
+            &Isosurface,
             &ViewVisibility,
             &GlobalTransform,
             Option<&PreviousGlobalTransform>,
@@ -27,113 +28,56 @@ pub fn extract_isosurfaces(
         )>,
     >,
 ) {
-    isosurface_instances.clear();
-    for (
-        entity,
-        isosurface,
-        view_visibility,
-        transform,
-        previous_transform,
-        not_shadow_receiver,
-        transmitted_receiver,
-    ) in isosurface_query.iter()
-    {
-        if !view_visibility.get() {
-            return;
-        }
-        let transform = transform.affine();
-        let previous_transform = previous_transform.map(|t| t.0).unwrap_or(transform);
-        let mut flags = if not_shadow_receiver {
-            MeshFlags::empty()
-        } else {
-            MeshFlags::SHADOW_RECEIVER
-        };
-        if transmitted_receiver {
-            flags |= MeshFlags::TRANSMITTED_SHADOW_RECEIVER;
-        }
-        if transform.matrix3.determinant().is_sign_positive() {
-            flags |= MeshFlags::SIGN_DETERMINANT_MODEL_3X3;
-        }
-        let transforms = MeshTransforms {
-            transform: (&transform).into(),
-            previous_transform: (&previous_transform).into(),
-            flags: flags.bits(),
-        };
-        commands.get_or_spawn(entity);
-        isosurface_instances.insert(
+    isosurfaces_query.par_iter().for_each_init(
+        || render_isosurface_instance_queues.borrow_local_mut(),
+        |queue,
+         (
             entity,
-            IsosurfaceInstance {
-                asset_id: isosurface.id(),
-                material_bind_group_id: MaterialBindGroupId::default(),
-                transforms,
-            },
-        );
+            isosurface,
+            view_visibility,
+            transform,
+            previous_transform,
+            not_shadow_receiver,
+            transmitted_receiver,
+        )| {
+            if !view_visibility.get() {
+                return;
+            }
+
+            let world_from_local = transform.affine();
+            let mut flags = if not_shadow_receiver {
+                MeshFlags::empty()
+            } else {
+                MeshFlags::SHADOW_RECEIVER
+            };
+            if transmitted_receiver {
+                flags |= MeshFlags::TRANSMITTED_SHADOW_RECEIVER;
+            }
+            if transform.affine().matrix3.determinant().is_sign_positive() {
+                flags |= MeshFlags::SIGN_DETERMINANT_MODEL_3X3;
+            }
+            queue.push((
+                entity,
+                IsosurfaceInstance {
+                    asset_id: isosurface.id(),
+                    material_bind_group_id: MaterialBindGroupId::default(),
+                    transforms: MeshTransforms {
+                        world_from_local: (&world_from_local).into(),
+                        previous_world_from_local: (&previous_transform
+                            .map(|t| t.0)
+                            .unwrap_or(world_from_local))
+                            .into(),
+                        flags: flags.bits(),
+                    },
+                },
+            ));
+        },
+    );
+
+    isosurface_instances.clear();
+    for queue in render_isosurface_instance_queues.iter_mut() {
+        for (entity, render_isosurface_instance) in queue.drain(..) {
+            isosurface_instances.insert_unique_unchecked(entity.into(), render_isosurface_instance);
+        }
     }
 }
-
-// fn fill_tasks<'a, T: PhaseItem>(
-//     phase_items: &'a Vec<T>,
-//     isosurfaces: &'a EntityHashMap<IsosurfaceInstance>,
-//     tasks: &'a mut Vec<PrepareIndirect>,
-// ) {
-//     let mut index = 0;
-//     while index < phase_items.len() {
-//         let item = &phase_items[index];
-//         let batch_range = item.batch_range();
-//         if batch_range.is_empty() {
-//             index += 1;
-//         } else {
-//             if let Some(isosurface) = isosurfaces.get(&item.entity()) {
-//                 tasks.push(PrepareIndirect {
-//                     entity: item.entity(),
-//                     asset_id: isosurface.asset_id,
-//                     indices: Indices {
-//                         instance_count: range.end - range.start,
-//                         first_instance: range.start,
-//                     },
-//                 });
-//             };
-//         }
-//     }
-// }
-//
-// pub fn queue_prepare_indirects(
-//     mut tasks: ResMut<PrepareIndirects>,
-//     isosurfaces: Res<IsosurfaceInstances>,
-//     views: Query<
-//         (
-//             &RenderPhase<Opaque3d>,
-//             &RenderPhase<AlphaMask3d>,
-//             &RenderPhase<Transmissive3d>,
-//             &RenderPhase<Transparent3d>,
-//         ),
-//         With<ExtractedView>,
-//     >,
-// ) {
-//     let to_indices = |range: &Range<u32>| Indices {
-//         instance_count: range.end - range.start,
-//         first_instance: range.start,
-//     };
-//     for (opaque, alpha_mask, transmissive, transparent) in views.iter() {}
-//     for task in tasks.iter_mut() {
-//         for (opaque, alpha_mask, transmissive, transparent) in views.iter() {
-//             if let Some(batch_range) = find_batch_range(entity, &opaque.items) {
-//                 task.indices = to_indices(batch_range);
-//                 break;
-//             }
-//             if let Some(batch_range) = find_batch_range(entity, &alpha_mask.items) {
-//                 task.indices = to_indices(batch_range);
-//                 break;
-//             }
-//             if let Some(batch_range) = find_batch_range(entity, &transmissive.items) {
-//                 task.indices = to_indices(batch_range);
-//                 break;
-//             }
-//             if let Some(batch_range) = find_batch_range(entity, &transparent.items) {
-//                 task.indices = to_indices(batch_range);
-//                 break;
-//             }
-//         }
-//         info!("batch range: {:?}", task.indices);
-//     }
-// }

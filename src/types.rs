@@ -1,7 +1,7 @@
 use bevy::{
-    ecs::entity::EntityHashMap,
     pbr::{MaterialBindGroupId, MeshTransforms},
     prelude::*,
+    render::sync_world::MainEntityHashMap,
 };
 
 use crate::assets::IsosurfaceAsset;
@@ -13,4 +13,4 @@ pub struct IsosurfaceInstance {
 }
 
 #[derive(Default, Resource, Deref, DerefMut)]
-pub struct IsosurfaceInstances(EntityHashMap<IsosurfaceInstance>);
+pub struct IsosurfaceInstances(pub MainEntityHashMap<IsosurfaceInstance>);

@@ -3,6 +3,7 @@ use std::hash::Hash;
 use bevy::{
     core_pipeline::{
         core_3d::{AlphaMask3d, Opaque3d, Opaque3dBinKey, Transmissive3d, Transparent3d},
+        oit::OrderIndependentTransparencySettings,
         prepass::{
             DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
             OpaqueNoLightmap3dBinKey,
@@ -12,49 +13,65 @@ use bevy::{
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
         screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
-        MaterialPipeline, MaterialPipelineKey, MeshPipeline, MeshPipelineKey, MeshUniform,
-        OpaqueRendererMethod, PreparedMaterial, RenderMaterialInstances, RenderViewLightProbes,
-        ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod,
+        MaterialPipeline, MaterialPipelineKey, MeshPipelineKey, OpaqueRendererMethod,
+        PreparedMaterial, RenderMaterialInstances, RenderViewLightProbes,
+        ScreenSpaceAmbientOcclusion, ShadowFilteringMethod,
     },
     prelude::*,
     render::{
         camera::TemporalJitter,
-        mesh::{MeshVertexBufferLayout, MeshVertexBufferLayouts, PrimitiveTopology},
+        mesh::{MeshVertexBufferLayout, MeshVertexBufferLayouts},
         render_asset::RenderAssets,
-        render_phase::{BinnedRenderPhase, DrawFunctions, SortedRenderPhase},
-        render_resource::{
-            GpuArrayBuffer, PipelineCache, SpecializedMeshPipelines, VertexAttribute,
-            VertexBufferLayout, VertexStepMode,
+        render_phase::{
+            BinnedRenderPhaseType, DrawFunctions, PhaseItemExtraIndex, ViewBinnedRenderPhases,
+            ViewSortedRenderPhases,
         },
-        renderer::RenderDevice,
-        view::{ExtractedView, VisibleEntities},
+        render_resource::{
+            PipelineCache, SpecializedMeshPipelines, VertexAttribute, VertexBufferLayout,
+            VertexStepMode,
+        },
+        view::{ExtractedView, RenderVisibleEntities},
     },
 };
 
 use crate::{types::IsosurfaceInstances, IsosurfaceAsset};
 
-use super::{commands::DrawIsosurfaceMaterial, types::DrawBindGroupLayout};
+use super::commands::DrawIsosurfaceMaterial;
 
+#[allow(clippy::too_many_arguments)]
 pub fn queue_material_isosurfaces<M: Material>(
-    opaque_draw_functions: Res<DrawFunctions<Opaque3d>>,
-    alpha_mask_draw_functions: Res<DrawFunctions<AlphaMask3d>>,
-    transmissive_draw_functions: Res<DrawFunctions<Transmissive3d>>,
-    transparent_draw_functions: Res<DrawFunctions<Transparent3d>>,
+    (
+        opaque_draw_functions,
+        alpha_mask_draw_functions,
+        transmissive_draw_functions,
+        transparent_draw_functions,
+    ): (
+        Res<DrawFunctions<Opaque3d>>,
+        Res<DrawFunctions<AlphaMask3d>>,
+        Res<DrawFunctions<Transmissive3d>>,
+        Res<DrawFunctions<Transparent3d>>,
+    ),
     material_pipeline: Res<MaterialPipeline<M>>,
     mut pipelines: ResMut<SpecializedMeshPipelines<MaterialPipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
-    msaa: Res<Msaa>,
-    render_materials: Res<RenderAssets<PreparedMaterial<M>>>,
+    // is Mutable to set material bind group, which is weird
     mut isosurface_instances: ResMut<IsosurfaceInstances>,
+    render_materials: Res<RenderAssets<PreparedMaterial<M>>>,
     render_material_instances: Res<RenderMaterialInstances<M>>,
+    mut opaque_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
+    mut alpha_mask_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3d>>,
+    mut transmissive_render_phases: ResMut<ViewSortedRenderPhases<Transmissive3d>>,
+    mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut vertex_buffer_layouts: ResMut<MeshVertexBufferLayouts>,
-    mut views: Query<(
+    views: Query<(
+        Entity,
         &ExtractedView,
-        &VisibleEntities,
+        &RenderVisibleEntities,
+        &Msaa,
         Option<&Tonemapping>,
         Option<&DebandDither>,
         Option<&ShadowFilteringMethod>,
-        Has<ScreenSpaceAmbientOcclusionSettings>,
+        Has<ScreenSpaceAmbientOcclusion>,
         (
             Has<NormalPrepass>,
             Has<DepthPrepass>,
@@ -64,22 +81,20 @@ pub fn queue_material_isosurfaces<M: Material>(
         Option<&Camera3d>,
         Has<TemporalJitter>,
         Option<&Projection>,
-        &mut BinnedRenderPhase<Opaque3d>,
-        &mut BinnedRenderPhase<AlphaMask3d>,
-        &mut SortedRenderPhase<Transmissive3d>,
-        &mut SortedRenderPhase<Transparent3d>,
         (
             Has<RenderViewLightProbes<EnvironmentMapLight>>,
             Has<RenderViewLightProbes<IrradianceVolume>>,
         ),
+        Has<OrderIndependentTransparencySettings>,
     )>,
 ) where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
-    info!("queue_material_isosurfaces");
     for (
+        view_entity,
         view,
         visible_entities,
+        msaa,
         tonemapping,
         dither,
         shadow_filter_method,
@@ -88,13 +103,25 @@ pub fn queue_material_isosurfaces<M: Material>(
         camera_3d,
         temporal_jitter,
         projection,
-        mut opaque_phase,
-        mut alpha_mask_phase,
-        mut transmissive_phase,
-        mut transparent_phase,
-        (has_environment_maps, _has_irradiance_volumes),
-    ) in &mut views
+        (has_environment_maps, has_irradiance_volumes),
+        has_oit,
+    ) in &views
     {
+        let (
+            Some(opaque_phase),
+            Some(alpha_mask_phase),
+            Some(transmissive_phase),
+            Some(transparent_phase),
+        ) = (
+            opaque_render_phases.get_mut(&view_entity),
+            alpha_mask_render_phases.get_mut(&view_entity),
+            transmissive_render_phases.get_mut(&view_entity),
+            transparent_render_phases.get_mut(&view_entity),
+        )
+        else {
+            continue;
+        };
+
         let draw_opaque_pbr = opaque_draw_functions
             .read()
             .id::<DrawIsosurfaceMaterial<M>>();
@@ -135,6 +162,14 @@ pub fn queue_material_isosurfaces<M: Material>(
             view_key |= MeshPipelineKey::ENVIRONMENT_MAP;
         }
 
+        if has_irradiance_volumes {
+            view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
+        }
+
+        if has_oit {
+            view_key |= MeshPipelineKey::OIT_ENABLED;
+        }
+
         if let Some(projection) = projection {
             view_key |= match projection {
                 Projection::Perspective(_) => MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
@@ -171,8 +206,11 @@ pub fn queue_material_isosurfaces<M: Material>(
                 camera_3d.screen_space_specular_transmission_quality,
             );
         }
+
         let rangefinder = view.rangefinder3d();
-        for visible_entity in visible_entities.iter::<With<Handle<IsosurfaceAsset>>>() {
+        for (render_entity, visible_entity) in
+            visible_entities.iter::<With<Handle<IsosurfaceAsset>>>()
+        {
             let Some(material_asset_id) = render_material_instances.get(visible_entity) else {
                 continue;
             };
@@ -183,21 +221,12 @@ pub fn queue_material_isosurfaces<M: Material>(
                 continue;
             };
 
-            let forward = match material.properties.render_method {
-                OpaqueRendererMethod::Forward => true,
-                OpaqueRendererMethod::Deferred => false,
-                OpaqueRendererMethod::Auto => unreachable!(),
-            };
-
-            let mut mesh_key = view_key;
-
-            mesh_key |= MeshPipelineKey::from_primitive_topology(PrimitiveTopology::TriangleList);
-
-            if material.properties.reads_view_transmission_texture {
-                mesh_key |= MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE;
-            }
-
-            mesh_key |= alpha_mode_pipeline_key(material.properties.alpha_mode);
+            let mut mesh_pipeline_key_bits = material.properties.mesh_pipeline_key_bits;
+            mesh_pipeline_key_bits.insert(alpha_mode_pipeline_key(
+                material.properties.alpha_mode,
+                msaa,
+            ));
+            let mesh_key = view_key | mesh_pipeline_key_bits;
 
             let layout = MeshVertexBufferLayout::new(
                 [Mesh::ATTRIBUTE_POSITION.id, Mesh::ATTRIBUTE_NORMAL.id].into(),
@@ -238,84 +267,80 @@ pub fn queue_material_isosurfaces<M: Material>(
                 }
             };
 
+            // ??
             isosurface_instance.material_bind_group_id = material.get_bind_group_id();
 
-            let distance = rangefinder
-                .distance_translation(&isosurface_instance.transforms.transform.translation)
-                + material.properties.depth_bias;
-            match material.properties.alpha_mode {
-                AlphaMode::Opaque => {
+            let translation = isosurface_instance.transforms.world_from_local.translation;
+            match mesh_key
+                .intersection(MeshPipelineKey::BLEND_RESERVED_BITS | MeshPipelineKey::MAY_DISCARD)
+            {
+                MeshPipelineKey::BLEND_OPAQUE | MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE => {
                     if material.properties.reads_view_transmission_texture {
+                        let distance = rangefinder.distance_translation(&translation)
+                            + material.properties.depth_bias;
                         transmissive_phase.add(Transmissive3d {
-                            entity: *visible_entity,
+                            entity: (*render_entity, *visible_entity),
                             draw_function: draw_transmissive_pbr,
                             pipeline: pipeline_id,
                             distance,
                             batch_range: 0..1,
-                            dynamic_offset: None,
+                            extra_index: PhaseItemExtraIndex::NONE,
                         });
-                    } else if forward {
-                        let key = Opaque3dBinKey {
-                            pipeline: pipeline_id,
-                            lightmap_image: None,
+                    } else if material.properties.render_method == OpaqueRendererMethod::Forward {
+                        let bin_key = Opaque3dBinKey {
                             draw_function: draw_opaque_pbr,
-                            asset_id: AssetId::<Mesh>::default(),
+                            pipeline: pipeline_id,
+                            asset_id: isosurface_instance.asset_id.into(),
                             material_bind_group_id: material.get_bind_group_id().0,
+                            lightmap_image: None,
                         };
-                        opaque_phase.add(key, *visible_entity, true);
+                        opaque_phase.add(
+                            bin_key,
+                            (*render_entity, *visible_entity),
+                            BinnedRenderPhaseType::mesh(true),
+                        );
                     }
                 }
-                AlphaMode::Mask(_) => {
+                // Alpha mask
+                MeshPipelineKey::MAY_DISCARD => {
                     if material.properties.reads_view_transmission_texture {
+                        let distance = rangefinder.distance_translation(&translation)
+                            + material.properties.depth_bias;
                         transmissive_phase.add(Transmissive3d {
-                            entity: *visible_entity,
+                            entity: (*render_entity, *visible_entity),
                             draw_function: draw_transmissive_pbr,
                             pipeline: pipeline_id,
                             distance,
                             batch_range: 0..1,
-                            dynamic_offset: None,
+                            extra_index: PhaseItemExtraIndex::NONE,
                         });
-                    } else if forward {
-                        let key = OpaqueNoLightmap3dBinKey {
+                    } else if material.properties.render_method == OpaqueRendererMethod::Forward {
+                        let bin_key = OpaqueNoLightmap3dBinKey {
                             draw_function: draw_alpha_mask_pbr,
                             pipeline: pipeline_id,
-                            asset_id: AssetId::<Mesh>::default(),
+                            asset_id: isosurface_instance.asset_id.into(),
                             material_bind_group_id: material.get_bind_group_id().0,
                         };
-                        alpha_mask_phase.add(key, *visible_entity, true);
+                        alpha_mask_phase.add(
+                            bin_key,
+                            (*render_entity, *visible_entity),
+                            BinnedRenderPhaseType::mesh(true),
+                        );
                     }
                 }
-                AlphaMode::Blend
-                | AlphaMode::Premultiplied
-                | AlphaMode::Add
-                | AlphaMode::Multiply => {
+                _ => {
+                    let distance = rangefinder.distance_translation(&translation)
+                        + material.properties.depth_bias;
                     transparent_phase.add(Transparent3d {
-                        entity: *visible_entity,
+                        entity: (*render_entity, *visible_entity),
                         draw_function: draw_transparent_pbr,
                         pipeline: pipeline_id,
                         distance,
                         batch_range: 0..1,
-                        dynamic_offset: None,
+                        extra_index: PhaseItemExtraIndex::NONE,
                     });
                 }
             }
         }
     }
-}
-
-// I think it can be done only once?
-// then why is it per frame in bevy itself?
-// TODO: figure out
-pub fn prepare_draw_bind_group_layout(
-    mut groups: ResMut<DrawBindGroupLayout>,
-    mesh_pipeline: Res<MeshPipeline>,
-    render_device: Res<RenderDevice>,
-    mesh_uniforms: Res<GpuArrayBuffer<MeshUniform>>,
-) {
-    groups.reset();
-    let layouts = &mesh_pipeline.mesh_layouts;
-    let Some(model) = mesh_uniforms.binding() else {
-        return;
-    };
-    groups.model_only = Some(layouts.model_only(&render_device, &model));
 }

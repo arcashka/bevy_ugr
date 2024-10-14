@@ -47,9 +47,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         let data_buffers_collection = data_buffers_collection.into_inner();
         let indirect_buffers_collection = indirect_buffers_collection.into_inner();
         let isosurface_instances = isosurface_instances.into_inner();
-        let Some(isosurface) = isosurface_instances.get(&item.entity()) else {
-            error!("isosurface instance not found");
-            return RenderCommandResult::Failure;
+        let Some(isosurface) = isosurface_instances.get(&item.main_entity()) else {
+            return RenderCommandResult::Failure("isosurface instance not found");
         };
 
         let (Some(data_buffers), Some(indirect_buffer)) = (
@@ -89,8 +88,9 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetIsosurfaceBindGroup<I
         let bind_groups = bind_groups.into_inner();
 
         let Some(bind_group) = bind_groups.model_only.as_ref() else {
-            error!("missing bind group. Should've been set in prepare_bind_group");
-            return RenderCommandResult::Failure;
+            return RenderCommandResult::Failure(
+                "missing bind group. Should've been set in prepare_bind_group",
+            );
         };
 
         let dynamic_offsets: [u32; 3] = Default::default();

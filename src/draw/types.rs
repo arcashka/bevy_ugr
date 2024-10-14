@@ -6,7 +6,7 @@ pub struct DrawBindGroupLayout {
 }
 
 impl DrawBindGroupLayout {
-    pub fn reset(&mut self) {
+    pub fn _reset(&mut self) {
         self.model_only = None;
     }
 }

@@ -7,13 +7,11 @@ use bevy::{
     },
 };
 
-use crate::assets::IsosurfaceAssetsStorage;
+use crate::assets::IsosurfaceAssets;
 
 use super::{
-    pipeline::IsosurfaceComputePipelines,
-    types::{
-        BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
-    },
+    pipeline::IsosurfaceComputePipelines, BuildIndirectBufferBindGroups,
+    CalculateIsosurfaceBindGroups, CalculateIsosurfaceTasks,
 };
 
 #[derive(Default)]
@@ -47,12 +45,12 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let encoder = render_context.command_encoder();
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
 
-        let assets = world.resource::<IsosurfaceAssetsStorage>();
+        let assets = world.resource::<IsosurfaceAssets>();
         let calculate_tasks = world.resource::<CalculateIsosurfaceTasks>();
         let calculate_bind_groups = world.resource::<CalculateIsosurfaceBindGroups>();
         let build_indirect_buffer_bind_groups = world.resource::<BuildIndirectBufferBindGroups>();
 
-        for asset_id in calculate_tasks.iter() {
+        for (asset_id, _) in calculate_tasks.iter() {
             let Some(calculate_bind_group) = calculate_bind_groups.get(asset_id) else {
                 error!("missing isosurface compute bind group");
                 continue;

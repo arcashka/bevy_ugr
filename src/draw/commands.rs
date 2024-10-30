@@ -1,7 +1,7 @@
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     log::*,
-    pbr::{SetMaterialBindGroup, SetMeshViewBindGroup},
+    pbr::{RenderMeshInstances, SetMaterialBindGroup, SetMeshViewBindGroup},
     render::{
         render_phase::{
             PhaseItem, RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
@@ -10,10 +10,7 @@ use bevy::{
     },
 };
 
-use crate::{
-    compute::{IndirectBuffersCollection, IsosurfaceBuffersCollection},
-    types::IsosurfaceInstances,
-};
+use crate::compute::{IndirectBuffersCollection, IsosurfaceBuffersCollection};
 
 use super::types::DrawBindGroupLayout;
 
@@ -29,7 +26,7 @@ pub struct DrawIsosurface;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
     type Param = (
-        SRes<IsosurfaceInstances>,
+        SRes<RenderMeshInstances>,
         SRes<IsosurfaceBuffersCollection>,
         SRes<IndirectBuffersCollection>,
     );
@@ -41,16 +38,19 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         item: &P,
         _: (),
         _: Option<()>,
-        (isosurface_instances, data_buffers_collection, indirect_buffers_collection): SystemParamItem<'w, '_, Self::Param>,
+        (mesh_instances, data_buffers_collection, indirect_buffers_collection): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let data_buffers_collection = data_buffers_collection.into_inner();
         let indirect_buffers_collection = indirect_buffers_collection.into_inner();
-        let isosurface_instances = isosurface_instances.into_inner();
-        let Some(isosurface) = isosurface_instances.get(&item.main_entity()) else {
+        let mesh_instances = mesh_instances.into_inner();
+        let Some(asset_id) = mesh_instances.mesh_asset_id(item.main_entity()) else {
             return RenderCommandResult::Failure("isosurface instance not found");
         };
-
         let (Some(data_buffers), Some(indirect_buffer)) = (
             data_buffers_collection.get(&isosurface.asset_id),
             indirect_buffers_collection.get(&isosurface.asset_id),
@@ -65,6 +65,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawIsosurface {
         pass.set_vertex_buffer(0, data_buffers.vertex_buffer.slice(..));
         pass.set_index_buffer(data_buffers.index_buffer.slice(..), 0, IndexFormat::Uint32);
         pass.draw_indexed_indirect(&indirect_buffer.indirect_buffer, 0);
+        info!("draw called");
 
         RenderCommandResult::Success
     }

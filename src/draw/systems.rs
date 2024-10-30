@@ -12,9 +12,9 @@ use bevy::{
     },
     pbr::{
         alpha_mode_pipeline_key, irradiance_volume::IrradianceVolume,
-        screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key,
+        screen_space_specular_transmission_pipeline_key, tonemapping_pipeline_key, DrawMaterial,
         MaterialPipeline, MaterialPipelineKey, MeshPipelineKey, OpaqueRendererMethod,
-        PreparedMaterial, RenderMaterialInstances, RenderViewLightProbes,
+        PreparedMaterial, RenderMaterialInstances, RenderMeshInstances, RenderViewLightProbes,
         ScreenSpaceAmbientOcclusion, ShadowFilteringMethod,
     },
     prelude::*,
@@ -34,9 +34,7 @@ use bevy::{
     },
 };
 
-use crate::{types::IsosurfaceInstances, IsosurfaceAsset};
-
-use super::commands::DrawIsosurfaceMaterial;
+use crate::IsosurfaceHandle;
 
 #[allow(clippy::too_many_arguments)]
 pub fn queue_material_isosurfaces<M: Material>(
@@ -54,8 +52,7 @@ pub fn queue_material_isosurfaces<M: Material>(
     material_pipeline: Res<MaterialPipeline<M>>,
     mut pipelines: ResMut<SpecializedMeshPipelines<MaterialPipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
-    // is Mutable to set material bind group, which is weird
-    mut isosurface_instances: ResMut<IsosurfaceInstances>,
+    mesh_instances: Res<RenderMeshInstances>,
     render_materials: Res<RenderAssets<PreparedMaterial<M>>>,
     render_material_instances: Res<RenderMaterialInstances<M>>,
     mut opaque_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
@@ -107,6 +104,7 @@ pub fn queue_material_isosurfaces<M: Material>(
         has_oit,
     ) in &views
     {
+        info!("draw queue query found instance");
         let (
             Some(opaque_phase),
             Some(alpha_mask_phase),
@@ -121,19 +119,12 @@ pub fn queue_material_isosurfaces<M: Material>(
         else {
             continue;
         };
+        info!("1");
 
-        let draw_opaque_pbr = opaque_draw_functions
-            .read()
-            .id::<DrawIsosurfaceMaterial<M>>();
-        let draw_alpha_mask_pbr = alpha_mask_draw_functions
-            .read()
-            .id::<DrawIsosurfaceMaterial<M>>();
-        let draw_transmissive_pbr = transmissive_draw_functions
-            .read()
-            .id::<DrawIsosurfaceMaterial<M>>();
-        let draw_transparent_pbr = transparent_draw_functions
-            .read()
-            .id::<DrawIsosurfaceMaterial<M>>();
+        let draw_opaque_pbr = opaque_draw_functions.read().id::<DrawMaterial<M>>();
+        let draw_alpha_mask_pbr = alpha_mask_draw_functions.read().id::<DrawMaterial<M>>();
+        let draw_transmissive_pbr = transmissive_draw_functions.read().id::<DrawMaterial<M>>();
+        let draw_transparent_pbr = transparent_draw_functions.read().id::<DrawMaterial<M>>();
 
         let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
@@ -208,16 +199,18 @@ pub fn queue_material_isosurfaces<M: Material>(
         }
 
         let rangefinder = view.rangefinder3d();
-        for (render_entity, visible_entity) in
-            visible_entities.iter::<With<Handle<IsosurfaceAsset>>>()
-        {
+        for (render_entity, visible_entity) in visible_entities.iter::<With<IsosurfaceHandle>>() {
+            info!("looking for entity: {:?}", visible_entity);
             let Some(material_asset_id) = render_material_instances.get(visible_entity) else {
+                info!("3");
                 continue;
             };
-            let Some(isosurface_instance) = isosurface_instances.get_mut(visible_entity) else {
+            let Some(mesh_instance) = mesh_instances.render_mesh_queue_data(*visible_entity) else {
+                info!("4");
                 continue;
             };
             let Some(material) = render_materials.get(*material_asset_id) else {
+                info!("5");
                 continue;
             };
 
@@ -267,10 +260,12 @@ pub fn queue_material_isosurfaces<M: Material>(
                 }
             };
 
-            // ??
-            isosurface_instance.material_bind_group_id = material.get_bind_group_id();
+            mesh_instance
+                .material_bind_group_id
+                .set(material.get_bind_group_id());
 
-            let translation = isosurface_instance.transforms.world_from_local.translation;
+            let translation = mesh_instance.translation;
+            info!("add isosurface phase item");
             match mesh_key
                 .intersection(MeshPipelineKey::BLEND_RESERVED_BITS | MeshPipelineKey::MAY_DISCARD)
             {
@@ -290,14 +285,14 @@ pub fn queue_material_isosurfaces<M: Material>(
                         let bin_key = Opaque3dBinKey {
                             draw_function: draw_opaque_pbr,
                             pipeline: pipeline_id,
-                            asset_id: isosurface_instance.asset_id.into(),
+                            asset_id: mesh_instance.mesh_asset_id,
                             material_bind_group_id: material.get_bind_group_id().0,
                             lightmap_image: None,
                         };
                         opaque_phase.add(
                             bin_key,
                             (*render_entity, *visible_entity),
-                            BinnedRenderPhaseType::mesh(true),
+                            BinnedRenderPhaseType::NonMesh,
                         );
                     }
                 }
@@ -318,13 +313,13 @@ pub fn queue_material_isosurfaces<M: Material>(
                         let bin_key = OpaqueNoLightmap3dBinKey {
                             draw_function: draw_alpha_mask_pbr,
                             pipeline: pipeline_id,
-                            asset_id: isosurface_instance.asset_id.into(),
+                            asset_id: mesh_instance.mesh_asset_id,
                             material_bind_group_id: material.get_bind_group_id().0,
                         };
                         alpha_mask_phase.add(
                             bin_key,
                             (*render_entity, *visible_entity),
-                            BinnedRenderPhaseType::mesh(true),
+                            BinnedRenderPhaseType::NonMesh,
                         );
                     }
                 }

@@ -1,36 +1,25 @@
 mod node;
 mod pipeline;
 
-mod systems;
-mod types;
-
 use bevy::{
     app::{App, Plugin},
     core_pipeline::core_3d::graph::{Core3d, Node3d},
     prelude::*,
-    render::{render_graph::RenderGraphApp, render_resource::Buffer, Render, RenderApp, RenderSet},
+    render::{
+        render_graph::RenderGraphApp, render_resource::PipelineCache, Render, RenderApp, RenderSet,
+    },
     utils::HashMap,
 };
+use pipeline::{
+    check_pipeline_for_readiness, mark_tasks_as_done, prepare_bind_groups, prepare_buffers,
+    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, IndirectBuffersCollection,
+    IsosurfaceBuffersCollection, PipelinesReady,
+};
 
-use crate::IsosurfaceAsset;
-
-pub struct IsosurfaceBuffers {
-    pub uniform_buffer: Buffer,
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
-    pub cells_buffer: Buffer,
-    pub atomics_buffer: Buffer,
-}
+use crate::Isosurface;
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct IsosurfaceBuffersCollection(HashMap<AssetId<IsosurfaceAsset>, IsosurfaceBuffers>);
-
-pub struct IndirectBuffers {
-    pub indirect_buffer: Buffer,
-}
-
-#[derive(Resource, Default, Deref, DerefMut)]
-pub struct IndirectBuffersCollection(HashMap<AssetId<IsosurfaceAsset>, IndirectBuffers>);
+pub struct CalculateIsosurfaceTasks(HashMap<AssetId<Isosurface>, bool>);
 
 pub struct ComputeIsosurfacePlugin;
 
@@ -40,16 +29,20 @@ impl Plugin for ComputeIsosurfacePlugin {
             .add_systems(
                 Render,
                 (
-                    systems::queue_isosurface_calculations.in_set(RenderSet::Queue),
-                    systems::prepare_buffers.in_set(RenderSet::PrepareResources),
-                    systems::prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
+                    check_pipeline_for_readiness
+                        .in_set(RenderSet::Render)
+                        .after(PipelineCache::process_pipeline_queue_system),
+                    prepare_buffers.in_set(RenderSet::PrepareResources),
+                    prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
+                    mark_tasks_as_done.in_set(RenderSet::Cleanup),
                 ),
             )
-            .init_resource::<types::CalculateIsosurfaceTasks>()
+            .init_resource::<CalculateIsosurfaceTasks>()
             .init_resource::<IndirectBuffersCollection>()
             .init_resource::<IsosurfaceBuffersCollection>()
-            .init_resource::<types::CalculateIsosurfaceBindGroups>()
-            .init_resource::<types::BuildIndirectBufferBindGroups>()
+            .init_resource::<CalculateIsosurfaceBindGroups>()
+            .init_resource::<BuildIndirectBufferBindGroups>()
+            .init_resource::<PipelinesReady>()
             .add_render_graph_node::<node::IsosurfaceComputeNode>(
                 Core3d,
                 node::IsosurfaceComputeNodeLabel,

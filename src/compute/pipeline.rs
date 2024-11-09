@@ -1,13 +1,17 @@
 use bevy::{
     prelude::*,
     render::{
+        mesh::{
+            allocator::{ElementClass, ElementLayout, MeshAllocator},
+            MeshVertexBufferLayout, MeshVertexBufferLayouts, VertexBufferLayout,
+        },
         render_resource::{
             binding_types, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
             Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages, CachedComputePipelineId,
             CachedPipelineState, ComputePipelineDescriptor, PipelineCache, ShaderStages,
-            ShaderType,
+            ShaderType, VertexAttribute, VertexStepMode,
         },
-        renderer::RenderDevice,
+        renderer::{RenderDevice, RenderQueue},
     },
     utils::HashMap,
 };
@@ -34,8 +38,6 @@ pub struct PipelinesReady(bool);
 
 pub struct IsosurfaceBuffers {
     pub uniform_buffer: Buffer,
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
     pub cells_buffer: Buffer,
     pub atomics_buffer: Buffer,
 }
@@ -177,20 +179,6 @@ pub fn prepare_buffers(
     mut indirect_buffers_collection: ResMut<IndirectBuffersCollection>,
 ) {
     for (asset_id, _) in tasks.iter() {
-        let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
-            label: Some("isosurface vertex buffer"),
-            size: 1024 * 256,
-            usage: BufferUsages::VERTEX | BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        let index_buffer = render_device.create_buffer(&BufferDescriptor {
-            label: Some("isosurface index buffer"),
-            size: 1024 * 256,
-            usage: BufferUsages::INDEX | BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
         let cells_buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("isosurface cells buffer"),
             size: 1024 * 256,
@@ -217,8 +205,6 @@ pub fn prepare_buffers(
         });
 
         let calculate_buffers = IsosurfaceBuffers {
-            vertex_buffer,
-            index_buffer,
             cells_buffer,
             uniform_buffer,
             atomics_buffer,
@@ -236,24 +222,36 @@ pub fn prepare_buffers(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_bind_groups(
     render_device: Res<RenderDevice>,
     isosurface_compute_pipeline: Res<IsosurfaceComputePipelines>,
     calculate_buffers: Res<IsosurfaceBuffersCollection>,
     indirect_buffers: Res<IndirectBuffersCollection>,
     tasks: Res<CalculateIsosurfaceTasks>,
+    mesh_allocator: Res<MeshAllocator>,
     mut calculate_bind_groups: ResMut<CalculateIsosurfaceBindGroups>,
     mut indirect_bind_groups: ResMut<BuildIndirectBufferBindGroups>,
 ) {
-    for (asset_id, _) in tasks.iter() {
+    for (asset_id, task_info) in tasks.iter() {
         let Some(calculate_buffers) = calculate_buffers.get(asset_id) else {
-            error!("isosurface buffers not found");
+            info!("isosurface buffers not found");
             return;
         };
 
         let Some(indirect_buffers) = indirect_buffers.get(asset_id) else {
-            error!("isosurface buffers not found");
+            info!("isosurface buffers not found");
             return;
+        };
+
+        let mesh_id = task_info.mesh_id;
+
+        let (Some(vertex_slice), Some(index_slice)) = (
+            mesh_allocator.mesh_vertex_slice(&mesh_id),
+            mesh_allocator.mesh_index_slice(&mesh_id),
+        ) else {
+            info!("no buffers");
+            continue;
         };
 
         let calculate_bind_group = render_device.create_bind_group(
@@ -266,11 +264,11 @@ pub fn prepare_bind_groups(
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: calculate_buffers.vertex_buffer.as_entire_binding(),
+                    resource: vertex_slice.buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: calculate_buffers.index_buffer.as_entire_binding(),
+                    resource: index_slice.buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 3,
@@ -314,8 +312,64 @@ pub fn mark_tasks_as_done(
     mut tasks: ResMut<CalculateIsosurfaceTasks>,
 ) {
     if pipelines_ready.0 {
-        for (_, status) in tasks.iter_mut() {
-            *status = true;
+        for (_, task) in tasks.iter_mut() {
+            task.done = true;
         }
+    }
+}
+
+pub fn allocate_buffers(
+    mut mesh_allocator: ResMut<MeshAllocator>,
+    tasks: Res<CalculateIsosurfaceTasks>,
+    render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+) {
+    for (_, task_info) in tasks.iter() {
+        let mesh_id = task_info.mesh_id;
+
+        if let (Some(_), Some(_)) = (
+            mesh_allocator.mesh_vertex_slice(&mesh_id),
+            mesh_allocator.mesh_index_slice(&mesh_id),
+        ) {
+            continue;
+        };
+
+        let vertex_element_layout = ElementLayout::new(
+            ElementClass::Vertex,
+            Mesh::ATTRIBUTE_POSITION.format.size() + Mesh::ATTRIBUTE_NORMAL.format.size(),
+        );
+        mesh_allocator.allocate_large(&mesh_id, vertex_element_layout);
+
+        let index_element_layout =
+            ElementLayout::new(ElementClass::Index, std::mem::size_of::<u32>() as u64);
+        mesh_allocator.allocate_large(&mesh_id, index_element_layout);
+
+        let Some(vertex_slab_id) = mesh_allocator.mesh_id_to_vertex_slab.get(&mesh_id).copied()
+        else {
+            unreachable!();
+        };
+        let Some(index_slab_id) = mesh_allocator.mesh_id_to_index_slab.get(&mesh_id).copied()
+        else {
+            unreachable!();
+        };
+        mesh_allocator.copy_element_data(
+            &mesh_id,
+            1024 * 256,
+            |_| {},
+            BufferUsages::VERTEX | BufferUsages::STORAGE,
+            vertex_slab_id,
+            &render_device,
+            &render_queue,
+        );
+        mesh_allocator.copy_element_data(
+            &mesh_id,
+            1024 * 256,
+            |_| {},
+            BufferUsages::INDEX | BufferUsages::STORAGE,
+            index_slab_id,
+            &render_device,
+            &render_queue,
+        );
+        info!("should be done")
     }
 }

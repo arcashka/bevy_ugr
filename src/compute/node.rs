@@ -42,6 +42,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
         else {
             return Ok(());
         };
+
         let encoder = render_context.command_encoder();
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
 
@@ -65,7 +66,6 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pass.dispatch_workgroups(density.x, density.y, density.z);
             pass.set_pipeline(connect_vertices_pipeline);
             pass.dispatch_workgroups(density.x, density.y, density.z);
-            info!("calculation dispatch");
 
             let Some(prepare_indirect_bind_group) = build_indirect_buffer_bind_groups.get(asset_id)
             else {
@@ -75,7 +75,6 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pass.set_bind_group(1, prepare_indirect_bind_group, &[]);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
-            info!("dispatch build indirect buffer");
         }
         Ok(())
     }

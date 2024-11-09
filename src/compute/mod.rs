@@ -11,15 +11,20 @@ use bevy::{
     utils::HashMap,
 };
 use pipeline::{
-    check_pipeline_for_readiness, mark_tasks_as_done, prepare_bind_groups, prepare_buffers,
-    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, IndirectBuffersCollection,
-    IsosurfaceBuffersCollection, PipelinesReady,
+    allocate_buffers, check_pipeline_for_readiness, mark_tasks_as_done, prepare_bind_groups,
+    prepare_buffers, BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups,
+    IndirectBuffersCollection, IsosurfaceBuffersCollection, PipelinesReady,
 };
 
 use crate::Isosurface;
 
+pub struct TaskInfo {
+    pub mesh_id: AssetId<Mesh>,
+    pub done: bool,
+}
+
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct CalculateIsosurfaceTasks(HashMap<AssetId<Isosurface>, bool>);
+pub struct CalculateIsosurfaceTasks(HashMap<AssetId<Isosurface>, TaskInfo>);
 
 pub struct ComputeIsosurfacePlugin;
 
@@ -35,6 +40,7 @@ impl Plugin for ComputeIsosurfacePlugin {
                     prepare_buffers.in_set(RenderSet::PrepareResources),
                     prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
                     mark_tasks_as_done.in_set(RenderSet::Cleanup),
+                    allocate_buffers.in_set(RenderSet::PrepareAssets),
                 ),
             )
             .init_resource::<CalculateIsosurfaceTasks>()
@@ -47,11 +53,7 @@ impl Plugin for ComputeIsosurfacePlugin {
                 Core3d,
                 node::IsosurfaceComputeNodeLabel,
             )
-            .add_render_graph_edge(
-                Core3d,
-                node::IsosurfaceComputeNodeLabel,
-                Node3d::StartMainPass,
-            );
+            .add_render_graph_edge(Core3d, node::IsosurfaceComputeNodeLabel, Node3d::Prepass);
     }
 
     fn finish(&self, app: &mut App) {

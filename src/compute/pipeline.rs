@@ -1,15 +1,12 @@
 use bevy::{
     prelude::*,
     render::{
-        mesh::{
-            allocator::{ElementClass, ElementLayout, MeshAllocator},
-            MeshVertexBufferLayout, MeshVertexBufferLayouts, VertexBufferLayout,
-        },
+        mesh::allocator::{ElementClass, ElementLayout, MeshAllocator},
         render_resource::{
             binding_types, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
             Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages, CachedComputePipelineId,
             CachedPipelineState, ComputePipelineDescriptor, PipelineCache, ShaderStages,
-            ShaderType, VertexAttribute, VertexStepMode,
+            ShaderType,
         },
         renderer::{RenderDevice, RenderQueue},
     },

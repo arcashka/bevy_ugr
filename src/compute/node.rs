@@ -1,13 +1,14 @@
 use bevy::{
     prelude::*,
     render::{
+        render_asset::RenderAssets,
         render_graph::{self, RenderGraphContext, RenderLabel},
         render_resource::{ComputePassDescriptor, PipelineCache},
         renderer::RenderContext,
     },
 };
 
-use crate::assets::IsosurfaceAssets;
+use crate::ComputeIsosurface;
 
 use super::{
     pipeline::IsosurfaceComputePipelines, BuildIndirectBufferBindGroups,
@@ -46,7 +47,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
         let encoder = render_context.command_encoder();
         let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor::default());
 
-        let assets = world.resource::<IsosurfaceAssets>();
+        let assets = world.resource::<RenderAssets<ComputeIsosurface>>();
         let calculate_tasks = world.resource::<CalculateIsosurfaceTasks>();
         let calculate_bind_groups = world.resource::<CalculateIsosurfaceBindGroups>();
         let build_indirect_buffer_bind_groups = world.resource::<BuildIndirectBufferBindGroups>();
@@ -57,7 +58,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
                 continue;
             };
             pass.set_bind_group(0, calculate_bind_group, &[]);
-            let Some(isosurface) = assets.get(asset_id) else {
+            let Some(isosurface) = assets.get(*asset_id) else {
                 error!("missing isosurface asset");
                 continue;
             };
@@ -75,6 +76,7 @@ impl render_graph::Node for IsosurfaceComputeNode {
             pass.set_bind_group(1, prepare_indirect_bind_group, &[]);
             pass.set_pipeline(prepare_indirect_buffer_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
+            info!("isosurface compute pass done");
         }
         Ok(())
     }

@@ -11,20 +11,15 @@ use bevy::{
     utils::HashMap,
 };
 use pipeline::{
-    allocate_buffers, check_pipeline_for_readiness, mark_tasks_as_done, prepare_bind_groups,
-    prepare_buffers, BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups,
-    IndirectBuffersCollection, IsosurfaceBuffersCollection, PipelinesReady,
+    allocate_buffers, check_pipeline_for_readiness, prepare_bind_groups, prepare_buffers,
+    BuildIndirectBufferBindGroups, CalculateIsosurfaceBindGroups, IndirectBuffersCollection,
+    IsosurfaceBuffersCollection, PipelinesReady,
 };
 
 use crate::Isosurface;
 
-pub struct TaskInfo {
-    pub mesh_id: AssetId<Mesh>,
-    pub done: bool,
-}
-
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct CalculateIsosurfaceTasks(HashMap<AssetId<Isosurface>, TaskInfo>);
+pub struct CalculateIsosurfaceTasks(HashMap<AssetId<Isosurface>, AssetId<Mesh>>);
 
 pub struct ComputeIsosurfacePlugin;
 
@@ -39,8 +34,8 @@ impl Plugin for ComputeIsosurfacePlugin {
                         .after(PipelineCache::process_pipeline_queue_system),
                     prepare_buffers.in_set(RenderSet::PrepareResources),
                     prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
-                    mark_tasks_as_done.in_set(RenderSet::Cleanup),
                     allocate_buffers.in_set(RenderSet::PrepareAssets),
+                    clear_finished_tasks.in_set(RenderSet::Cleanup),
                 ),
             )
             .init_resource::<CalculateIsosurfaceTasks>()
@@ -59,5 +54,14 @@ impl Plugin for ComputeIsosurfacePlugin {
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
             .init_resource::<pipeline::IsosurfaceComputePipelines>();
+    }
+}
+
+fn clear_finished_tasks(
+    mut tasks: ResMut<CalculateIsosurfaceTasks>,
+    pipelines_ready: ResMut<PipelinesReady>,
+) {
+    if pipelines_ready.0 {
+        tasks.clear();
     }
 }

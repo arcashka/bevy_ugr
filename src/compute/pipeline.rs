@@ -2,6 +2,7 @@ use bevy::{
     prelude::*,
     render::{
         mesh::allocator::{ElementClass, ElementLayout, MeshAllocator},
+        render_asset::RenderAssets,
         render_resource::{
             binding_types, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
             Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages, CachedComputePipelineId,
@@ -15,7 +16,7 @@ use bevy::{
 
 use std::{borrow::Cow, num::NonZeroU64};
 
-use crate::{assets::IsosurfaceAssets, Isosurface};
+use crate::{ComputeIsosurface, Isosurface};
 
 use super::CalculateIsosurfaceTasks;
 
@@ -31,7 +32,7 @@ pub struct IsosurfaceComputePipelines {
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct PipelinesReady(bool);
+pub struct PipelinesReady(pub bool);
 
 pub struct IsosurfaceBuffers {
     pub uniform_buffer: Buffer,
@@ -170,7 +171,7 @@ impl FromWorld for IsosurfaceComputePipelines {
 
 pub fn prepare_buffers(
     render_device: Res<RenderDevice>,
-    assets: Res<IsosurfaceAssets>,
+    assets: Res<RenderAssets<ComputeIsosurface>>,
     tasks: Res<CalculateIsosurfaceTasks>,
     mut calculate_buffers_collection: ResMut<IsosurfaceBuffersCollection>,
     mut indirect_buffers_collection: ResMut<IndirectBuffersCollection>,
@@ -184,7 +185,7 @@ pub fn prepare_buffers(
         });
 
         // TODO: write new values instead of recreating this 3... buffers
-        let Some(asset) = assets.get(asset_id) else {
+        let Some(asset) = assets.get(*asset_id) else {
             error!("isosurface asset not found");
             return;
         };
@@ -230,7 +231,7 @@ pub fn prepare_bind_groups(
     mut calculate_bind_groups: ResMut<CalculateIsosurfaceBindGroups>,
     mut indirect_bind_groups: ResMut<BuildIndirectBufferBindGroups>,
 ) {
-    for (asset_id, task_info) in tasks.iter() {
+    for (asset_id, mesh_id) in tasks.iter() {
         let Some(calculate_buffers) = calculate_buffers.get(asset_id) else {
             info!("isosurface buffers not found");
             return;
@@ -241,11 +242,9 @@ pub fn prepare_bind_groups(
             return;
         };
 
-        let mesh_id = task_info.mesh_id;
-
         let (Some(vertex_slice), Some(index_slice)) = (
-            mesh_allocator.mesh_vertex_slice(&mesh_id),
-            mesh_allocator.mesh_index_slice(&mesh_id),
+            mesh_allocator.mesh_vertex_slice(mesh_id),
+            mesh_allocator.mesh_index_slice(mesh_id),
         ) else {
             info!("no buffers");
             continue;
@@ -304,29 +303,16 @@ pub fn check_pipeline_for_readiness(
     };
 }
 
-pub fn mark_tasks_as_done(
-    pipelines_ready: ResMut<PipelinesReady>,
-    mut tasks: ResMut<CalculateIsosurfaceTasks>,
-) {
-    if pipelines_ready.0 {
-        for (_, task) in tasks.iter_mut() {
-            task.done = true;
-        }
-    }
-}
-
 pub fn allocate_buffers(
     mut mesh_allocator: ResMut<MeshAllocator>,
     tasks: Res<CalculateIsosurfaceTasks>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
-    for (_, task_info) in tasks.iter() {
-        let mesh_id = task_info.mesh_id;
-
+    for (_, mesh_id) in tasks.iter() {
         if let (Some(_), Some(_)) = (
-            mesh_allocator.mesh_vertex_slice(&mesh_id),
-            mesh_allocator.mesh_index_slice(&mesh_id),
+            mesh_allocator.mesh_vertex_slice(mesh_id),
+            mesh_allocator.mesh_index_slice(mesh_id),
         ) {
             continue;
         };
@@ -335,22 +321,21 @@ pub fn allocate_buffers(
             ElementClass::Vertex,
             Mesh::ATTRIBUTE_POSITION.format.size() + Mesh::ATTRIBUTE_NORMAL.format.size(),
         );
-        mesh_allocator.allocate_large(&mesh_id, vertex_element_layout);
+        mesh_allocator.allocate_large(mesh_id, vertex_element_layout);
 
         let index_element_layout =
             ElementLayout::new(ElementClass::Index, std::mem::size_of::<u32>() as u64);
-        mesh_allocator.allocate_large(&mesh_id, index_element_layout);
+        mesh_allocator.allocate_large(mesh_id, index_element_layout);
 
-        let Some(vertex_slab_id) = mesh_allocator.mesh_id_to_vertex_slab.get(&mesh_id).copied()
+        let Some(vertex_slab_id) = mesh_allocator.mesh_id_to_vertex_slab.get(mesh_id).copied()
         else {
             unreachable!();
         };
-        let Some(index_slab_id) = mesh_allocator.mesh_id_to_index_slab.get(&mesh_id).copied()
-        else {
+        let Some(index_slab_id) = mesh_allocator.mesh_id_to_index_slab.get(mesh_id).copied() else {
             unreachable!();
         };
         mesh_allocator.copy_element_data(
-            &mesh_id,
+            mesh_id,
             1024 * 256,
             |_| {},
             BufferUsages::VERTEX | BufferUsages::STORAGE,
@@ -359,7 +344,7 @@ pub fn allocate_buffers(
             &render_queue,
         );
         mesh_allocator.copy_element_data(
-            &mesh_id,
+            mesh_id,
             1024 * 256,
             |_| {},
             BufferUsages::INDEX | BufferUsages::STORAGE,
